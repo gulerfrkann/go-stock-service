@@ -18,11 +18,11 @@ Proje; ürün listeleme, yeni ürün ekleme ve sipariş durumlarında stok düş
 ##  Projeyi Yerelde Çalıştırma
 
 ### Gereksinimler
-* [Go 1.20+](https://go.dev/dl/) sisteminizde kurulu olmalıdır.
+* [Go 1.20+](https://go.dev/dl/) sisteminizde kurulu olmalıdı
 
 ### Adımlar
 
 1. **Repoyu klonlayın:**
    ```bash
-   git clone [https://github.com/gulerfrkann/go-stock-service.git](https://github.com/gulerfrkann/go-stock-service.git)
+   git clone https://github.com/gulerfrkann/go-stock-service.git
    cd go-stock-service
