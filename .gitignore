@@ -1,0 +1,16 @@
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+.vscode/
+.idea/
+.DS_Store
+*.log
+# Hassas veriler ve veritabanı dosyaları
+.env
+*.csv
+*.sql
+*.xlsx
