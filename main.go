@@ -13,6 +13,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
+// @title Stok Servisi API
+// @version 1.0
+// @description Go Fiber ve GORM ile geliştirilmiş stok yönetimi mikroservis API dokümantasyonu.
+// @host localhost:8080
+// @BasePath /api/v1
 func main() {
 	db := config.ConnectDB()
 
