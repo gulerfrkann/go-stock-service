@@ -1,12 +1,14 @@
 package models
 
+import "gorm.io/gorm"
+
 type Product struct {
-	ID    uint    `json:"id" gorm:"primaryKey"`
-	Ad    string  `json:"ad"`
-	Fiyat float64 `json:"fiyat"`
-	Stok  int     `json:"stok"`
+	gorm.Model
+	Name  string  `json:"name"`
+	Price float64 `json:"price"`
+	Stock int     `json:"stock"`
 }
 
 type ReduceStockRequest struct {
-	Adet int `json:"adet"`
+	Quantity int `json:"quantity"`
 }

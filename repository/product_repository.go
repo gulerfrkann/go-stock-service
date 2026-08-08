@@ -7,9 +7,9 @@ import (
 )
 
 type ProductRepository interface {
-	GetAll() ([]models.Product, error)
 	Create(product *models.Product) error
-	GetByID(id string) (*models.Product, error)
+	GetAll() ([]models.Product, error)
+	GetByID(id uint) (*models.Product, error)
 	Update(product *models.Product) error
 }
 
@@ -21,17 +21,17 @@ func NewProductRepository(db *gorm.DB) ProductRepository {
 	return &productRepository{db: db}
 }
 
+func (r *productRepository) Create(product *models.Product) error {
+	return r.db.Create(product).Error
+}
+
 func (r *productRepository) GetAll() ([]models.Product, error) {
 	var products []models.Product
 	err := r.db.Find(&products).Error
 	return products, err
 }
 
-func (r *productRepository) Create(product *models.Product) error {
-	return r.db.Create(product).Error
-}
-
-func (r *productRepository) GetByID(id string) (*models.Product, error) {
+func (r *productRepository) GetByID(id uint) (*models.Product, error) {
 	var product models.Product
 	err := r.db.First(&product, id).Error
 	if err != nil {

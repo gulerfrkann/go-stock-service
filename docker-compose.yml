@@ -1,0 +1,42 @@
+services:
+  # 1. PostgreSQL Veritabanı Servisi
+  postgres-db:
+    image: postgres:15-alpine
+    container_name: stok-postgres-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: stok_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - stok-network
+
+  # 2. Go Fiber REST API Servisi
+  stock-api:
+    build: .
+    container_name: stok-api-service
+    restart: on-failure # Veritabanı gecikirse yeniden denesin
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres-db
+    environment:
+      PORT: 8080
+      DB_HOST: postgres-db
+      DB_PORT: 5432
+      DB_USER: postgres
+      DB_PASSWORD: postgres
+      DB_NAME: stok_db
+      DB_SSLMODE: disable
+    networks:
+      - stok-network
+
+networks:
+  stok-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
