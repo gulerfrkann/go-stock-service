@@ -19,10 +19,13 @@ import (
 // @host localhost:8080
 // @BasePath /api/v1
 func main() {
+	// Veritabanı ve Redis Bağlantıları
 	db := config.ConnectDB()
+	rdb := config.ConnectRedis() // Redis bağlantısını açıyoruz
 
+	// Bağımlılıkların Oluşturulması (Dependency Injection)
 	productRepo := repository.NewProductRepository(db)
-	productService := service.NewProductService(productRepo)
+	productService := service.NewProductService(productRepo, rdb) // rdb servise aktarıldı
 	productHandler := handlers.NewProductHandler(productService)
 
 	app := fiber.New()

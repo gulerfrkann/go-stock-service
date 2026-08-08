@@ -14,15 +14,25 @@ services:
     networks:
       - stok-network
 
-  # 2. Go Fiber REST API Servisi
+ # 2. Redis Önbellek (Cache) Servisi
+  redis-cache:
+    image: redis:7-alpine
+    container_name: stok-redis-cache
+    ports:
+      - "6380:6379" # Dış portu 6380 yaptık
+    networks:
+      - stok-network
+
+  # 3. Go Fiber REST API Servisi
   stock-api:
     build: .
     container_name: stok-api-service
-    restart: on-failure # Veritabanı gecikirse yeniden denesin
+    restart: on-failure # Veritabanı veya Redis gecikirse yeniden denesin
     ports:
       - "8080:8080"
     depends_on:
       - postgres-db
+      - redis-cache
     environment:
       PORT: 8080
       DB_HOST: postgres-db
@@ -31,6 +41,8 @@ services:
       DB_PASSWORD: postgres
       DB_NAME: stok_db
       DB_SSLMODE: disable
+      REDIS_HOST: redis-cache
+      REDIS_PORT: 6379
     networks:
       - stok-network
 
