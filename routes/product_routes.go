@@ -14,7 +14,7 @@ func SetupProductRoutes(api fiber.Router, handler *handlers.ProductHandler) {
 	api.Get("/swagger/*", swagger.HandlerDefault)
 
 	products := api.Group("/products")
-	products.Get("/", handler.GetAllProducts)
+	products.Get("/", handler.GetProducts)
 	products.Post("/", handler.CreateProduct)
 	products.Post("/:id/reduce", handler.ReduceStock)
 }

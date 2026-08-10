@@ -12,21 +12,23 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Önbellek için kullanacağımız sabitleştirilmiş anahtar adı
-const productsCacheKey = "products_list"
-
 type ProductService interface {
-	GetAllProducts() ([]models.Product, error)
+	GetProducts(page, limit int, search string) ([]models.Product, int64, error)
 	CreateProduct(product *models.Product) error
 	ReduceStock(id uint, req models.ReduceStockRequest) (*models.Product, error)
 }
 
 type productService struct {
 	repo repository.ProductRepository
-	rdb  *redis.Client // Redis istemcisi bağımlılığı eklendi
+	rdb  *redis.Client
 }
 
-// NewProductService artık Redis istemcisini de parametre olarak alıyor
+// Önbellekte saklayacağımız verinin yapısı (Ürün listesi + Toplam satır sayısı)
+type PaginatedProductsResult struct {
+	Products []models.Product `json:"products"`
+	Total    int64            `json:"total"`
+}
+
 func NewProductService(repo repository.ProductRepository, rdb *redis.Client) ProductService {
 	return &productService{
 		repo: repo,
@@ -34,34 +36,38 @@ func NewProductService(repo repository.ProductRepository, rdb *redis.Client) Pro
 	}
 }
 
-func (s *productService) GetAllProducts() ([]models.Product, error) {
-	// 1. ADIM: Redis'te veri var mı kontrol et
-	cachedData, err := s.rdb.Get(config.Ctx, productsCacheKey).Result()
+// GetProducts - Sayfalama ve arama sorgusuna özel dinamik Redis Cache kontrolü yapar
+func (s *productService) GetProducts(page, limit int, search string) ([]models.Product, int64, error) {
+	// Her sayfa, limit ve arama terimi için benzersiz dinamik Cache Key
+	cacheKey := fmt.Sprintf("products:page:%d:limit:%d:search:%s", page, limit, search)
+
+	// 1. ADIM: Redis'te bu spesifik arama/sayfa kombinasyonu var mı kontrol et
+	cachedData, err := s.rdb.Get(config.Ctx, cacheKey).Result()
 	if err == nil {
-		// CACHE HIT: Veri Redis'te bulundu!
-		var products []models.Product
-		// JSON string formatındaki veriyi Go struct yapısına çeviriyoruz (Unmarshal)
-		if err := json.Unmarshal([]byte(cachedData), &products); err == nil {
-			fmt.Println("🚀 VERİ REDIS CACHE'DEN GETİRİLDİ (0ms)")
-			return products, nil
+		var result PaginatedProductsResult
+		if err := json.Unmarshal([]byte(cachedData), &result); err == nil {
+			fmt.Printf("🚀 VERİ REDIS CACHE'DEN GETİRİLDİ (0ms) -> Key: %s\n", cacheKey)
+			return result.Products, result.Total, nil
 		}
 	}
 
-	// 2. ADIM (CACHE MISS): Veri Redis'te yoksa veya hata alındıysa PostgreSQL'den çek
+	// 2. ADIM (CACHE MISS): Veri Redis'te yoksa PostgreSQL (GIN Index) üzerinden çek
 	fmt.Println("🗄️ VERİ POSTGRESQL VERİTABANINDAN ÇEKİLİYOR...")
-	products, err := s.repo.GetAll()
+	products, total, err := s.repo.GetProducts(page, limit, search)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	// 3. ADIM: Veritabanından çektiğimiz veriyi JSON'a dönüştür ve Redis'e kaydet (10 dakika TTL)
-	jsonData, err := json.Marshal(products)
-	if err == nil {
-		// Set komutu: (context, key, value, ttl)
-		s.rdb.Set(config.Ctx, productsCacheKey, jsonData, 10*time.Minute)
+	// 3. ADIM: Çekilen veriyi JSON yapısına çevir ve Redis'e 10 dakika TTL ile kaydet
+	toCache := PaginatedProductsResult{
+		Products: products,
+		Total:    total,
+	}
+	if jsonData, err := json.Marshal(toCache); err == nil {
+		s.rdb.Set(config.Ctx, cacheKey, jsonData, 10*time.Minute)
 	}
 
-	return products, nil
+	return products, total, nil
 }
 
 func (s *productService) CreateProduct(product *models.Product) error {
@@ -70,9 +76,9 @@ func (s *productService) CreateProduct(product *models.Product) error {
 		return err
 	}
 
-	// CACHE INVALIDATION: Yeni ürün eklendiği için Redis'teki eski listeyi siliyoruz
-	s.rdb.Del(config.Ctx, productsCacheKey)
-	fmt.Println("🧹 YENİ ÜRÜN EKLENDİ - REDIS CACHE TEMİZLENDİ")
+	// CACHE INVALIDATION: Yeni ürün eklendiği için oluşturulmuş tüm ürün önbelleklerini temizle
+	s.clearProductsCache()
+	fmt.Println("🧹 YENİ ÜRÜN EKLENDİ - TÜM REDIS ÜRÜN CACHE'LERİ TEMİZLENDİ")
 
 	return nil
 }
@@ -92,9 +98,17 @@ func (s *productService) ReduceStock(id uint, req models.ReduceStockRequest) (*m
 		return nil, err
 	}
 
-	// CACHE INVALIDATION: Stok değiştiği için Redis'teki eski listeyi siliyoruz
-	s.rdb.Del(config.Ctx, productsCacheKey)
-	fmt.Println("🧹 STOK GÜNCELLENDİ - REDIS CACHE TEMİZLENDİ")
+	// CACHE INVALIDATION: Stok değiştiği için oluşturulmuş tüm ürün önbelleklerini temizle
+	s.clearProductsCache()
+	fmt.Println("🧹 STOK GÜNCELLENDİ - TÜM REDIS ÜRÜN CACHE'LERİ TEMİZLENDİ")
 
 	return product, nil
+}
+
+// clearProductsCache - "products:*" kalıbına uyan tüm önbellek anahtarlarını siler
+func (s *productService) clearProductsCache() {
+	keys, err := s.rdb.Keys(config.Ctx, "products:*").Result()
+	if err == nil && len(keys) > 0 {
+		s.rdb.Del(config.Ctx, keys...)
+	}
 }

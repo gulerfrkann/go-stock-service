@@ -29,6 +29,7 @@ func main() {
 	productHandler := handlers.NewProductHandler(productService)
 
 	app := fiber.New()
+	app.Static("/", "./public")
 
 	// API Versiyon Grubu
 	api := app.Group("/api/v1")

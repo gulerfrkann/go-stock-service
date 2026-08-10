@@ -14,3 +14,4 @@
 *.csv
 *.sql
 *.xlsx
+*.parquet

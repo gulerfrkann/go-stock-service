@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Enterprise Stok Yönetim Paneli</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-100 p-4 md:p-8 min-h-screen">
+    <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-lg border border-slate-200 p-6">
+        
+        <!-- Üst Başlık ve İstatistikler -->
+        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center pb-6 mb-6 border-b border-slate-200 gap-4">
+            <div>
+                <div class="flex items-center space-x-3">
+                    <span class="text-3xl">📦</span>
+                    <h1 class="text-2xl font-bold text-slate-800">Çoklu Kanal Stok Yönetim Paneli</h1>
+                </div>
+                <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache ile 1.000.000 Ürün Takibi</p>
+            </div>
+            
+            <div class="w-full lg:w-96">
+                <div class="relative">
+                    <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ürün, marka veya kategori ara..." 
+                           class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                    <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tablo -->
+        <div class="overflow-x-auto rounded-lg border border-slate-200">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                        <th class="p-3.5">ID</th>
+                        <th class="p-3.5">Ürün Adı</th>
+                        <th class="p-3.5">Kaynak Platform</th>
+                        <th class="p-3.5">Kategori</th>
+                        <th class="p-3.5">Fiyat</th>
+                        <th class="p-3.5">Stok</th>
+                        <th class="p-3.5">Durum</th>
+                    </tr>
+                </thead>
+                <tbody id="productTable" class="divide-y divide-slate-200 text-sm">
+                    <!-- JavaScript ile dinamik dolacak -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Alt Altbilgi & Sayfalama -->
+        <div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
+            <span id="pageInfo" class="text-sm text-slate-600 font-medium">Veriler yükleniyor...</span>
+            <div class="flex space-x-2">
+                <button onclick="changePage(-1)" id="prevBtn" class="px-4 py-2 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Önceki</button>
+                <button onclick="changePage(1)" id="nextBtn" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Sonraki</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentPage = 1;
+        let totalPages = 1;
+        let searchTimeout = null;
+
+        // Ürün adından Otomatik Platform, Kategori ve Temiz İsim Çıkarıcı
+        function parseProductDetails(rawName) {
+            let name = rawName || 'İsimsiz Ürün';
+            let platform = 'Genel Pazar Yeri';
+            let platformClass = 'bg-slate-100 text-slate-700 border-slate-300';
+            let category = 'Diğer';
+            let categoryClass = 'bg-slate-100 text-slate-600';
+
+            // Platform Tespiti (Veri Setindeki Kod Kalıplarından)
+            if (name.endsWith(', Clz') || name.includes(', Clz')) {
+                platform = 'Çiçeksepeti';
+                platformClass = 'bg-pink-50 text-pink-700 border-pink-200';
+                name = name.replace(/,\s*Clz$/i, '').trim();
+            } else if (name.endsWith(', Clt') || name.includes(', Clt')) {
+                platform = 'Trendyol';
+                platformClass = 'bg-orange-50 text-orange-700 border-orange-200';
+                name = name.replace(/,\s*Clt$/i, '').trim();
+            } else if (name.toLowerCase().includes('macbook') || name.toLowerCase().includes('sinbo')) {
+                platform = 'Hepsiburada';
+                platformClass = 'bg-amber-50 text-amber-700 border-amber-200';
+            } else if (name.toLowerCase().includes('faber')) {
+                platform = 'Amazon TR';
+                platformClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
+            }
+
+            // Kategori Tespiti (Anahtar Kelimelerden)
+            const lower = name.toLowerCase();
+            if (lower.includes('macbook') || lower.includes('bilgisayar') || lower.includes('telefon')) {
+                category = 'Elektronik & Teknoloji';
+                categoryClass = 'bg-indigo-50 text-indigo-700 border border-indigo-100';
+            } else if (lower.includes('kalem') || lower.includes('faber') || lower.includes('grip') || lower.includes('versatil') || lower.includes('silgi')) {
+                category = 'Kırtasiye & Ofis';
+                categoryClass = 'bg-yellow-50 text-yellow-800 border border-yellow-100';
+            } else if (lower.includes('halı yıkama') || lower.includes('sinbo') || lower.includes('makin')) {
+                category = 'Ev & Küçük Aletleri';
+                categoryClass = 'bg-purple-50 text-purple-700 border border-purple-100';
+            } else {
+                category = 'Kitap & Medya';
+                categoryClass = 'bg-blue-50 text-blue-700 border border-blue-100';
+            }
+
+            return { cleanName: name, platform, platformClass, category, categoryClass };
+        }
+
+        async function fetchProducts() {
+            const search = document.getElementById('searchInput').value;
+            const response = await fetch(`/api/v1/products?page=${currentPage}&limit=15&search=${encodeURIComponent(search)}`);
+            const result = await response.json();
+
+            const tbody = document.getElementById('productTable');
+            tbody.innerHTML = '';
+
+            if (!result.data || result.data.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
+                return;
+            }
+
+            result.data.forEach(p => {
+                const details = parseProductDetails(p.name);
+                
+                const stockBadge = p.stock < 50 
+                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">⚠️ Kritik (${p.stock})</span>`
+                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">✓ Stokta (${p.stock})</span>`;
+
+                tbody.innerHTML += `
+                    <tr class="hover:bg-slate-50 transition-colors">
+                        <td class="p-3.5 font-mono text-xs text-slate-400">#${p.ID}</td>
+                        <td class="p-3.5 font-semibold text-slate-800 max-w-md truncate" title="${details.cleanName}">${details.cleanName}</td>
+                        <td class="p-3.5">
+                            <span class="px-2.5 py-1 rounded-md text-xs font-semibold border ${details.platformClass}">
+                                ${details.platform}
+                            </span>
+                        </td>
+                        <td class="p-3.5">
+                            <span class="px-2.5 py-1 rounded-md text-xs font-medium ${details.categoryClass}">
+                                ${details.category}
+                            </span>
+                        </td>
+                        <td class="p-3.5 font-medium text-slate-700">₺${p.price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
+                        <td class="p-3.5 font-semibold text-slate-700">${p.stock.toLocaleString('tr-TR')}</td>
+                        <td class="p-3.5">${stockBadge}</td>
+                    </tr>
+                `;
+            });
+
+            totalPages = result.total_pages;
+            document.getElementById('pageInfo').innerText = `Sayfa ${result.page} / ${result.total_pages.toLocaleString('tr-TR')} (Toplam ${result.total.toLocaleString('tr-TR')} ürün)`;
+            document.getElementById('prevBtn').disabled = currentPage === 1;
+            document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        function changePage(delta) {
+            if (currentPage + delta >= 1 && currentPage + delta <= totalPages) {
+                currentPage += delta;
+                fetchProducts();
+            }
+        }
+
+        function debounceSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(() => {
+                currentPage = 1;
+                fetchProducts();
+            }, 300);
+        }
+
+        fetchProducts();
+    </script>
+</body>
+</html>

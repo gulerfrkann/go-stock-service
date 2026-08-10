@@ -18,6 +18,7 @@ WORKDIR /app
 
 # Derlenen binary dosyasını kopyala
 COPY --from=builder /app/main .
+COPY --from=builder /app/public ./public
 
 EXPOSE 8080
 

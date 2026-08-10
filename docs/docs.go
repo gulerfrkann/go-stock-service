@@ -17,22 +17,40 @@ const docTemplate = `{
     "paths": {
         "/products": {
             "get": {
-                "description": "Veritabanındaki tüm ürünlerin listesini getirir.",
+                "description": "965k ürün arasında hızlı arama (GIN Trigram) ve sayfalama yapar.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Products"
                 ],
-                "summary": "Tüm ürünleri listele",
+                "summary": "Ürünleri Listele ve Ara",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Sayfa Numarası (Varsayılan: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Sayfa Başına Ürün Miktarı (Varsayılan: 20, Maks: 100)",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Ürün Adında Arama Terimi",
+                        "name": "search",
+                        "in": "query"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/models.Product"
-                            }
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     },
                     "500": {
@@ -47,7 +65,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Sisteme yeni bir ürün kaydeder.",
+                "description": "Sisteme yeni bir ürün kaydeder ve ilgili Redis önbelleklerini temizler.",
                 "consumes": [
                     "application/json"
                 ],
@@ -57,7 +75,7 @@ const docTemplate = `{
                 "tags": [
                     "Products"
                 ],
-                "summary": "Yeni ürün oluştur",
+                "summary": "Yeni Ürün Oluştur",
                 "parameters": [
                     {
                         "description": "Ürün Bilgisi",
@@ -109,7 +127,7 @@ const docTemplate = `{
                 "tags": [
                     "Products"
                 ],
-                "summary": "Stok düşür",
+                "summary": "Stok Düşür",
                 "parameters": [
                     {
                         "type": "integer",
