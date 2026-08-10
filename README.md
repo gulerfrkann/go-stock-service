@@ -1,4 +1,4 @@
-# 📦 Go Stock Service (Stok Yönetimi Mikroservisi)
+#  Go Stock Service (Stok Yönetimi Mikroservisi)
 
 ![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)
 ![Fiber Framework](https://img.shields.io/badge/Fiber-v2-000000?style=flat&logo=gofiber)
