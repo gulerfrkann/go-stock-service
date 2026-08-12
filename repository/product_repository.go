@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"errors"
 	"stok-servisi/models"
 
 	"gorm.io/gorm"
@@ -12,6 +13,8 @@ type ProductRepository interface {
 	GetByID(id uint) (*models.Product, error)
 	Update(product *models.Product) error
 	UpdateStock(id uint, newStock int) error
+	ReserveStock(id uint, quantity int) error // Yeni metot
+	ReleaseStock(id uint, quantity int) error // Yeni metot
 }
 
 type productRepository struct {
@@ -61,4 +64,26 @@ func (r *productRepository) Update(product *models.Product) error {
 
 func (r *productRepository) UpdateStock(id uint, newStock int) error {
 	return r.db.Model(&models.Product{}).Where("id = ?", id).Update("stock", newStock).Error
+}
+
+// ReserveStock DB seviyesinde stoğu atomik olarak düşürür
+func (r *productRepository) ReserveStock(id uint, quantity int) error {
+	result := r.db.Model(&models.Product{}).
+		Where("id = ? AND stock >= ?", id, quantity).
+		Update("stock", gorm.Expr("stock - ?", quantity))
+
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return errors.New("yetersiz stok veya ürün bulunamadı")
+	}
+	return nil
+}
+
+// ReleaseStock Rezervasyon iptal edildiğinde stoğu DB'ye geri iade eder
+func (r *productRepository) ReleaseStock(id uint, quantity int) error {
+	return r.db.Model(&models.Product{}).
+		Where("id = ?", id).
+		Update("stock", gorm.Expr("stock + ?", quantity)).Error
 }

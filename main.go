@@ -6,6 +6,7 @@ import (
 
 	"stok-servisi/config"
 	"stok-servisi/handlers"
+	"stok-servisi/models" // Model paketini ekledik
 	"stok-servisi/repository"
 	"stok-servisi/routes"
 	"stok-servisi/service"
@@ -13,19 +14,19 @@ import (
 	"github.com/gofiber/fiber/v2"
 )
 
-// @title Stok Servisi API
-// @version 1.0
-// @description Go Fiber ve GORM ile geliştirilmiş stok yönetimi mikroservis API dokümantasyonu.
-// @host localhost:8080
-// @BasePath /api/v1
 func main() {
 	// Veritabanı ve Redis Bağlantıları
 	db := config.ConnectDB()
-	rdb := config.ConnectRedis() // Redis bağlantısını açıyoruz
+	rdb := config.ConnectRedis()
+
+	// Veritabanı Tablo Migrasyonu (Tablo yoksa otomatik oluşturur)
+	if err := db.AutoMigrate(&models.Product{}); err != nil {
+		log.Fatalf("Veritabanı migrasyon hatası: %v", err)
+	}
 
 	// Bağımlılıkların Oluşturulması (Dependency Injection)
 	productRepo := repository.NewProductRepository(db)
-	productService := service.NewProductService(productRepo, rdb) // rdb servise aktarıldı
+	productService := service.NewProductService(productRepo, rdb)
 	productHandler := handlers.NewProductHandler(productService)
 
 	app := fiber.New()

@@ -1,16 +1,16 @@
 ﻿package routes
 
 import (
-    "stok-servisi/handlers"
+	"stok-servisi/handlers"
 
-    "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2"
 )
 
-func SetupProductRoutes(api fiber.Router, productHandler *handlers.ProductHandler) {
-    productGroup := api.Group("/products")
+func SetupProductRoutes(api fiber.Router, handler *handlers.ProductHandler) {
+	products := api.Group("/products")
 
-    productGroup.Get("/", productHandler.GetProducts)
-    productGroup.Post("/", productHandler.CreateProduct)
-    productGroup.Post("/:id/reduce", productHandler.ReduceStock)
-    productGroup.Post("/:id/reduce-stock", productHandler.ReduceStock)
+	products.Get("/", handler.GetProducts)
+	products.Post("/", handler.CreateProduct)
+	products.Post("/reserve-stock", handler.ReserveStock) // /api/v1/products/reserve-stock
+	products.Post("/:id/reduce-stock", handler.ReduceStock)
 }
