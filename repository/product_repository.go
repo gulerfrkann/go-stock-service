@@ -2,6 +2,7 @@ package repository
 
 import (
 	"errors"
+
 	"stok-servisi/models"
 
 	"gorm.io/gorm"
@@ -12,9 +13,9 @@ type ProductRepository interface {
 	GetProducts(page, limit int, search string) ([]models.Product, int64, error)
 	GetByID(id uint) (*models.Product, error)
 	Update(product *models.Product) error
-	UpdateStock(id uint, newStock int) error
-	ReserveStock(id uint, quantity int) error // Yeni metot
-	ReleaseStock(id uint, quantity int) error // Yeni metot
+	UpdateStock(productID uint, newStock int) error
+	ReserveStock(productID uint, quantity int) error
+	ReserveStockWithOutbox(productID uint, quantity int, event *models.OutboxEvent) error
 }
 
 type productRepository struct {
@@ -34,56 +35,71 @@ func (r *productRepository) GetProducts(page, limit int, search string) ([]model
 	var total int64
 
 	query := r.db.Model(&models.Product{})
-
 	if search != "" {
 		query = query.Where("name ILIKE ?", "%"+search+"%")
 	}
 
-	if err := query.Count(&total).Error; err != nil {
+	err := query.Count(&total).Error
+	if err != nil {
 		return nil, 0, err
 	}
 
 	offset := (page - 1) * limit
-	err := query.Offset(offset).Limit(limit).Order("id ASC").Find(&products).Error
-
+	err = query.Offset(offset).Limit(limit).Find(&products).Error
 	return products, total, err
 }
 
 func (r *productRepository) GetByID(id uint) (*models.Product, error) {
 	var product models.Product
 	err := r.db.First(&product, id).Error
-	if err != nil {
-		return nil, err
-	}
-	return &product, nil
+	return &product, err
 }
 
 func (r *productRepository) Update(product *models.Product) error {
 	return r.db.Save(product).Error
 }
 
-func (r *productRepository) UpdateStock(id uint, newStock int) error {
-	return r.db.Model(&models.Product{}).Where("id = ?", id).Update("stock", newStock).Error
+func (r *productRepository) UpdateStock(productID uint, newStock int) error {
+	return r.db.Model(&models.Product{}).Where("id = ?", productID).Update("stock", newStock).Error
 }
 
-// ReserveStock DB seviyesinde stoğu atomik olarak düşürür
-func (r *productRepository) ReserveStock(id uint, quantity int) error {
-	result := r.db.Model(&models.Product{}).
-		Where("id = ? AND stock >= ?", id, quantity).
-		Update("stock", gorm.Expr("stock - ?", quantity))
+func (r *productRepository) ReserveStock(productID uint, quantity int) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var product models.Product
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&product, productID).Error; err != nil {
+			return err
+		}
 
-	if result.Error != nil {
-		return result.Error
-	}
-	if result.RowsAffected == 0 {
-		return errors.New("yetersiz stok veya ürün bulunamadı")
-	}
-	return nil
+		if product.Stock < quantity {
+			return errors.New("yetersiz stok")
+		}
+
+		product.Stock -= quantity
+		return tx.Save(&product).Error
+	})
 }
 
-// ReleaseStock Rezervasyon iptal edildiğinde stoğu DB'ye geri iade eder
-func (r *productRepository) ReleaseStock(id uint, quantity int) error {
-	return r.db.Model(&models.Product{}).
-		Where("id = ?", id).
-		Update("stock", gorm.Expr("stock + ?", quantity)).Error
+// Transactional Outbox Pattern ile stok düşümü ve Outbox olayı kaydı
+func (r *productRepository) ReserveStockWithOutbox(productID uint, quantity int, event *models.OutboxEvent) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		var product models.Product
+		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&product, productID).Error; err != nil {
+			return err
+		}
+
+		if product.Stock < quantity {
+			return errors.New("yetersiz stok")
+		}
+
+		product.Stock -= quantity
+		if err := tx.Save(&product).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Create(event).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
 }

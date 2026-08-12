@@ -1,54 +1,51 @@
+version: '3.8'
+
 services:
-  # 1. PostgreSQL Veritabanı Servisi
   postgres-db:
     image: postgres:15-alpine
     container_name: stok-postgres-db
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_PASSWORD: postgrespassword
       POSTGRES_DB: stok_db
     ports:
       - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    networks:
-      - stok-network
 
- # 2. Redis Önbellek (Cache) Servisi
   redis-cache:
     image: redis:7-alpine
     container_name: stok-redis-cache
     ports:
-      - "6380:6379" # Dış portu 6380 yaptık
-    networks:
-      - stok-network
+      - "6380:6379"
 
-  # 3. Go Fiber REST API Servisi
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: stok-rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+
   stock-api:
     build: .
     container_name: stok-api-service
-    restart: on-failure # Veritabanı veya Redis gecikirse yeniden denesin
     ports:
       - "8080:8080"
+    environment:
+      - PORT=8080
+      - DB_HOST=postgres-db
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgrespassword
+      - DB_NAME=stok_db
+      - REDIS_HOST=redis-cache
+      - REDIS_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_PORT=5672
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASS=guest
     depends_on:
       - postgres-db
       - redis-cache
-    environment:
-      PORT: 8080
-      DB_HOST: postgres-db
-      DB_PORT: 5432
-      DB_USER: postgres
-      DB_PASSWORD: postgres
-      DB_NAME: stok_db
-      DB_SSLMODE: disable
-      REDIS_HOST: redis-cache
-      REDIS_PORT: 6379
-    networks:
-      - stok-network
-
-networks:
-  stok-network:
-    driver: bridge
-
-volumes:
-  postgres_data:
+      - rabbitmq

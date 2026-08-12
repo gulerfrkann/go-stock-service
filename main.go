@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 
@@ -11,6 +12,7 @@ import (
 	"stok-servisi/repository"
 	"stok-servisi/routes"
 	"stok-servisi/service"
+	"stok-servisi/worker"
 
 	"github.com/ansrivas/fiberprometheus/v2"
 	"github.com/gofiber/fiber/v2"
@@ -22,34 +24,42 @@ func main() {
 	logger := config.InitLogger()
 	defer logger.Sync()
 
-	// 2. Veritabanı ve Redis Bağlantıları
+	// 2. Veritabanı, Redis ve RabbitMQ Bağlantıları
 	db := config.ConnectDB()
 	rdb := config.ConnectRedis()
+	amqpConn := config.ConnectRabbitMQ()
+	defer amqpConn.Close()
 
-	// Veritabanı Tablo Migrasyonu
-	if err := db.AutoMigrate(&models.Product{}); err != nil {
+	// 3. Veritabanı Tablo Migrasyonları (Product ve OutboxEvent)
+	if err := db.AutoMigrate(&models.Product{}, &models.OutboxEvent{}); err != nil {
 		logger.Fatal("Veritabanı migrasyon hatası", zap.Error(err))
 	}
 
-	// 3. Bağımlılıkların Oluşturulması (Dependency Injection)
+	// 4. Outbox Relay Worker (Goroutine olarak arka planda baslatilir)
+	outboxWorker := worker.NewOutboxWorker(db, amqpConn)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go outboxWorker.Start(ctx)
+
+	// 5. Bağımlılıkların Oluşturulması (Dependency Injection)
 	productRepo := repository.NewProductRepository(db)
 	productService := service.NewProductService(productRepo, rdb)
 	productHandler := handlers.NewProductHandler(productService)
-	healthHandler := handlers.NewHealthHandler(db, rdb) // Health Handler eklendi
+	healthHandler := handlers.NewHealthHandler(db, rdb)
 
 	app := fiber.New()
 	app.Static("/", "./public")
 
-	// 4. Observability Middleware'leri & Prometheus Metrikleri
+	// 6. Observability Middleware'leri & Prometheus Metrikleri
 	prometheus := fiberprometheus.New("stok_servisi")
 	prometheus.RegisterAt(app, "/metrics")
 	app.Use(prometheus.Middleware)
-	app.Use(middleware.CorrelationID()) // Her isteğe benzersiz X-Correlation-ID atar
+	app.Use(middleware.CorrelationID())
 
-	// 5. Health Check Rotaları (/healthz/live & /healthz/ready)
+	// 7. Health Check Rotaları (/healthz/live & /healthz/ready)
 	routes.SetupHealthRoutes(app, healthHandler)
 
-	// 6. API Versiyon Grubu ve Ürün Rotaları
+	// 8. API Versiyon Grubu ve Ürün Rotaları
 	api := app.Group("/api/v1")
 	routes.SetupProductRoutes(api, productHandler)
 

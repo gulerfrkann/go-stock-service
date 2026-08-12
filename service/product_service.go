@@ -2,11 +2,15 @@
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"go.uber.org/zap"
+
+	"stok-servisi/config"
 	"stok-servisi/models"
 	"stok-servisi/repository"
 )
@@ -60,7 +64,7 @@ type ProductService interface {
 	GetProductByID(id uint) (*models.Product, error)
 	UpdateProduct(product *models.Product) error
 	ReduceStock(ctx context.Context, productID uint, quantity int) (int64, error)
-	ReserveStock(ctx context.Context, req models.ReserveStockRequest) (int64, error) // Yeni eklendi
+	ReserveStock(ctx context.Context, req models.ReserveStockRequest) (int64, error)
 }
 
 type productService struct {
@@ -145,10 +149,12 @@ func (s *productService) ReduceStock(ctx context.Context, productID uint, quanti
 	return result, nil
 }
 
-// ReserveStock Stok Rezervasyon İş Mantığı
+// ReserveStock Stok Rezervasyon İş Mantığı (Outbox & Zap Logger Entegreli)
 func (s *productService) ReserveStock(ctx context.Context, req models.ReserveStockRequest) (int64, error) {
+	correlationID, _ := ctx.Value("correlation_id").(string)
+
 	if req.ExpirationSecs == 0 {
-		req.ExpirationSecs = 900 // Süre verilmediyse varsayılan 15 dakika (900 sn)
+		req.ExpirationSecs = 900 // Varsayılan 15 dakika
 	}
 
 	orderKey := fmt.Sprintf("reservation:order:%s", req.OrderID)
@@ -176,6 +182,10 @@ func (s *productService) ReserveStock(ctx context.Context, req models.ReserveSto
 
 	result, err := reserveStockLuaScript.Run(ctx, s.redisClient, keys, args...).Int64()
 	if err != nil {
+		config.Logger.Error("Redis script çalıştırma hatası",
+			zap.Error(err),
+			zap.String("correlation_id", correlationID),
+		)
 		return 0, fmt.Errorf("redis script hatası: %v", err)
 	}
 
@@ -190,24 +200,63 @@ func (s *productService) ReserveStock(ctx context.Context, req models.ReserveSto
 		}
 	}
 
-	// Hata kodlarının kontrolü
+	// Hata kodlarının kontrolü & Loglanması
 	switch result {
 	case -1:
+		config.Logger.Warn("Mükerrer rezervasyon isteği engellendi (Idempotent)",
+			zap.String("correlation_id", correlationID),
+			zap.String("order_id", req.OrderID),
+			zap.Uint("product_id", req.ProductID),
+		)
 		return 0, errors.New("bu sipariş id'si ile daha önce zaten stok rezerve edilmiş (idempotent)")
 	case -2:
 		return 0, errors.New("stok bilgisi senkronize edilemedi, lütfen tekrar deneyin")
 	case -3:
+		config.Logger.Warn("Yetersiz stok rezervasyon reddedildi",
+			zap.String("correlation_id", correlationID),
+			zap.String("order_id", req.OrderID),
+			zap.Uint("product_id", req.ProductID),
+			zap.Int("requested_quantity", req.Quantity),
+		)
 		return 0, errors.New("yetersiz stok! rezervasyon başarısız")
 	}
 
-	// Redis tarafı başarılı; veritabanında da atomik düşüm gerçekleştiriliyor
-	err = s.repo.ReserveStock(req.ProductID, req.Quantity)
+	// Redis tarafı başarılı; Veritabanı rezervasyonu + Outbox kaydı ekleniyor
+	eventPayload, _ := json.Marshal(map[string]interface{}{
+		"product_id":      req.ProductID,
+		"order_id":        req.OrderID,
+		"reserved_qty":    req.Quantity,
+		"remaining_stock": result,
+		"timestamp":       time.Now(),
+	})
+
+	outboxEvent := &models.OutboxEvent{
+		AggregateType: "product",
+		AggregateID:   req.OrderID,
+		EventType:     "StockReserved",
+		Payload:       string(eventPayload),
+		Status:        "PENDING",
+	}
+
+	err = s.repo.ReserveStockWithOutbox(req.ProductID, req.Quantity, outboxEvent)
 	if err != nil {
-		// DB hatası durumunda Redis cache'i temizleniyor ve rezervasyon kaydı siliniyor
+		// DB hatası durumunda Redis cache'i ve rezervasyon kaydı geri alınıyor
 		s.redisClient.Del(ctx, stockKey)
 		s.redisClient.Del(ctx, orderKey)
+		config.Logger.Error("Veritabanı stok rezervasyon hatası, Redis rollback yapıldı",
+			zap.Error(err),
+			zap.String("correlation_id", correlationID),
+		)
 		return 0, errors.New("veritabanında stok rezerve edilirken hata oluştu, işlem geri alındı")
 	}
+
+	config.Logger.Info("Stok başarıyla rezerve edildi ve Outbox kaydı oluşturuldu",
+		zap.String("correlation_id", correlationID),
+		zap.Uint("product_id", req.ProductID),
+		zap.String("order_id", req.OrderID),
+		zap.Int("reserved_quantity", req.Quantity),
+		zap.Int64("remaining_stock", result),
+	)
 
 	return result, nil
 }
