@@ -17,45 +17,45 @@ import (
 
 // Doğrudan stok düşürme için Lua Script
 var decreaseStockLuaScript = redis.NewScript(`
-	local current_stock = redis.call('GET', KEYS[1])
-	if not current_stock then
-		return -2
-	end
-	if tonumber(current_stock) >= tonumber(ARGV[1]) then
-		return redis.call('DECRBY', KEYS[1], ARGV[1])
-	else
-		return -1
-	end
+    local current_stock = redis.call('GET', KEYS[1])
+    if not current_stock then
+        return -2
+    end
+    if tonumber(current_stock) >= tonumber(ARGV[1]) then
+        return redis.call('DECRBY', KEYS[1], ARGV[1])
+    else
+        return -1
+    end
 `)
 
 // Idempotent Stok Rezervasyonu için Lua Script
 var reserveStockLuaScript = redis.NewScript(`
-	local order_key = KEYS[1]
-	local stock_key = KEYS[2]
-	local amount = tonumber(ARGV[1])
-	local ttl = tonumber(ARGV[2])
+    local order_key = KEYS[1]
+    local stock_key = KEYS[2]
+    local amount = tonumber(ARGV[1])
+    local ttl = tonumber(ARGV[2])
 
-	-- 1. Idempotency Kontrolü: Bu sipariş daha önce rezerve edildi mi?
-	if redis.call('EXISTS', order_key) == 1 then
-		return -1
-	end
+    -- 1. Idempotency Kontrolü: Bu sipariş daha önce rezerve edildi mi?
+    if redis.call('EXISTS', order_key) == 1 then
+        return -1
+    end
 
-	-- 2. Stok Key Kontrolü
-	local current_stock = redis.call('GET', stock_key)
-	if not current_stock then
-		return -2
-	end
+    -- 2. Stok Key Kontrolü
+    local current_stock = redis.call('GET', stock_key)
+    if not current_stock then
+        return -2
+    end
 
-	-- 3. Stok Yeterlilik Kontrolü
-	if tonumber(current_stock) < amount then
-		return -3
-	end
+    -- 3. Stok Yeterlilik Kontrolü
+    if tonumber(current_stock) < amount then
+        return -3
+    end
 
-	-- 4. Stok Düşme ve Order Rezervasyon Key'ini TTL ile Kaydetme
-	local new_stock = redis.call('DECRBY', stock_key, amount)
-	redis.call('SET', order_key, amount, 'EX', ttl)
+    -- 4. Stok Düşme ve Order Rezervasyon Key'ini TTL ile Kaydetme
+    local new_stock = redis.call('DECRBY', stock_key, amount)
+    redis.call('SET', order_key, amount, 'EX', ttl)
 
-	return new_stock
+    return new_stock
 `)
 
 type ProductService interface {
@@ -65,6 +65,7 @@ type ProductService interface {
 	UpdateProduct(product *models.Product) error
 	ReduceStock(ctx context.Context, productID uint, quantity int) (int64, error)
 	ReserveStock(ctx context.Context, req models.ReserveStockRequest) (int64, error)
+	UploadProductImage(productID uint, imageURL, imagePath string) error
 }
 
 type productService struct {
@@ -259,4 +260,42 @@ func (s *productService) ReserveStock(ctx context.Context, req models.ReserveSto
 	)
 
 	return result, nil
+}
+
+// UploadProductImage Görsel yükleme ve ProductImageUploaded Outbox olayı oluşturma
+func (s *productService) UploadProductImage(productID uint, imageURL, imagePath string) error {
+	eventPayload := models.ProductImageUploadedEvent{
+		ProductID: productID,
+		ImageURL:  imageURL,
+		ImagePath: imagePath,
+	}
+
+	payloadBytes, err := json.Marshal(eventPayload)
+	if err != nil {
+		return fmt.Errorf("event payload serileştirme hatası: %w", err)
+	}
+
+	outboxEvent := &models.OutboxEvent{
+		AggregateType: "product",
+		AggregateID:   fmt.Sprintf("PROD-IMG-%d", productID),
+		EventType:     "ProductImageUploaded",
+		Payload:       string(payloadBytes),
+		Status:        "PENDING",
+	}
+
+	err = s.repo.SaveProductImageWithOutbox(productID, imageURL, outboxEvent)
+	if err != nil {
+		config.Logger.Error("Görsel kaydı ve Outbox oluşturma hatası",
+			zap.Error(err),
+			zap.Uint("product_id", productID),
+		)
+		return err
+	}
+
+	config.Logger.Info("Görsel başarıyla kaydedildi ve ProductImageUploaded Outbox kaydı oluşturuldu",
+		zap.Uint("product_id", productID),
+		zap.String("image_url", imageURL),
+	)
+
+	return nil
 }

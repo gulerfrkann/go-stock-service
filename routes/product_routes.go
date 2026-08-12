@@ -9,8 +9,9 @@ import (
 func SetupProductRoutes(api fiber.Router, handler *handlers.ProductHandler) {
 	products := api.Group("/products")
 
-	products.Get("/", handler.GetProducts)
 	products.Post("/", handler.CreateProduct)
-	products.Post("/reserve-stock", handler.ReserveStock) // /api/v1/products/reserve-stock
-	products.Post("/:id/reduce-stock", handler.ReduceStock)
+	products.Get("/", handler.GetProducts)
+	products.Get("/:id", handler.GetProductByID)           // GET isteği için zorunlu rota
+	products.Post("/reserve-stock", handler.ReserveStock)
+	products.Post("/:id/upload-image", handler.UploadImage)
 }

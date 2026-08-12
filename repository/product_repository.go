@@ -16,6 +16,8 @@ type ProductRepository interface {
 	UpdateStock(productID uint, newStock int) error
 	ReserveStock(productID uint, quantity int) error
 	ReserveStockWithOutbox(productID uint, quantity int, event *models.OutboxEvent) error
+	SaveProductImageWithOutbox(productID uint, imageURL string, event *models.OutboxEvent) error
+	UpdateAICatalogData(productID uint, category, seoTitle, description, careInstructions string) error
 }
 
 type productRepository struct {
@@ -102,4 +104,30 @@ func (r *productRepository) ReserveStockWithOutbox(productID uint, quantity int,
 
 		return nil
 	})
+}
+
+// Transactional Outbox Pattern ile Görsel URL güncelleme ve ProductImageUploaded olay kaydı
+func (r *productRepository) SaveProductImageWithOutbox(productID uint, imageURL string, event *models.OutboxEvent) error {
+	return r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&models.Product{}).Where("id = ?", productID).Update("image_url", imageURL).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Create(event).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+}
+
+// AI Worker tarafından üretilen katalog verilerini veritabanında güncelleme
+func (r *productRepository) UpdateAICatalogData(productID uint, category, seoTitle, description, careInstructions string) error {
+	return r.db.Model(&models.Product{}).Where("id = ?", productID).Updates(map[string]interface{}{
+		"category":          category,
+		"seo_title":         seoTitle,
+		"description":       description,
+		"care_instructions": careInstructions,
+		"ai_cataloged":      true,
+	}).Error
 }

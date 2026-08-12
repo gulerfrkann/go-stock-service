@@ -9,9 +9,15 @@ import (
 // Product Veritabanı modeli
 type Product struct {
 	gorm.Model
-	Name  string  `json:"name"`
-	Price float64 `json:"price"`
-	Stock int     `json:"stock"`
+	Name             string  `json:"name"`
+	Description      string  `json:"description"`
+	Price            float64 `json:"price"`
+	Stock            int     `json:"stock"`
+	ImageURL         string  `json:"image_url"`
+	Category         string  `json:"category"`
+	SEOTitle         string  `json:"seo_title"`
+	CareInstructions string  `json:"care_instructions"`
+	AICataloged      bool    `json:"ai_cataloged" gorm:"default:false"`
 }
 
 // ReduceStockRequest Doğrudan stok düşme isteği
@@ -33,4 +39,11 @@ type StockReservation struct {
 	ProductID uint      `json:"product_id"`
 	Quantity  int       `json:"quantity"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+// ProductImageUploadedEvent Outbox üzerinden RabbitMQ'ya atılacak AI görsel işleme olayının içeriği
+type ProductImageUploadedEvent struct {
+	ProductID uint   `json:"product_id"`
+	ImageURL  string `json:"image_url"`
+	ImagePath string `json:"image_path"`
 }

@@ -1,7 +1,9 @@
 ﻿package handlers
 
 import (
+	"fmt"
 	"math"
+	"os"
 	"strconv"
 
 	"stok-servisi/models"
@@ -43,6 +45,24 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 		"page":        page,
 		"limit":       limit,
 		"total_pages": totalPages,
+	})
+}
+
+func (h *ProductHandler) GetProductByID(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	id, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Geçersiz ürün ID'si"})
+	}
+
+	product, err := h.service.GetProductByID(uint(id))
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Ürün bulunamadı"})
+	}
+
+	return c.JSON(fiber.Map{
+		"success": true,
+		"data":    product,
 	})
 }
 
@@ -141,5 +161,60 @@ func (h *ProductHandler) ReserveStock(c *fiber.Ctx) error {
 		"product_id":      req.ProductID,
 		"order_id":        req.OrderID,
 		"remaining_stock": remainingStock,
+	})
+}
+
+// UploadImage Ürün Görseli Yükleme ve AI Outbox Tetikleme Ucu
+func (h *ProductHandler) UploadImage(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	productID, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Geçersiz ürün ID'si",
+		})
+	}
+
+	file, err := c.FormFile("image")
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Görsel dosyası zorunludur ('image' formu)",
+		})
+	}
+
+	uploadDir := "./public/uploads"
+	if err := os.MkdirAll(uploadDir, os.ModePerm); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"error":   "Dizin oluşturulamadı",
+		})
+	}
+
+	filename := fmt.Sprintf("%d_%s", productID, file.Filename)
+	filePath := fmt.Sprintf("%s/%s", uploadDir, filename)
+
+	if err := c.SaveFile(file, filePath); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"error":   "Dosya kaydedilemedi",
+		})
+	}
+
+	imageURL := fmt.Sprintf("/uploads/%s", filename)
+	if err := h.service.UploadProductImage(uint(productID), imageURL, filePath); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"success": false,
+			"error":   err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success": true,
+		"message": "Görsel başarıyla yüklendi, AI kataloglama olayı Outbox'a aktarıldı",
+		"data": fiber.Map{
+			"product_id": productID,
+			"image_url":  imageURL,
+		},
 	})
 }

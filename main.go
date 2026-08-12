@@ -16,6 +16,7 @@ import (
 
 	"github.com/ansrivas/fiberprometheus/v2"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"go.uber.org/zap"
 )
 
@@ -47,19 +48,31 @@ func main() {
 	productHandler := handlers.NewProductHandler(productService)
 	healthHandler := handlers.NewHealthHandler(db, rdb)
 
+	// 6. AI Catalog Worker (RabbitMQ'dan resim yükleme olaylarını dinler ve ürünü zenginleştirir)
+	aiWorker := worker.NewAIWorker(amqpConn, productRepo)
+	aiWorker.Start()
+
 	app := fiber.New()
+
+	// 7. CORS İzinleri (Tarayıcı / HTML panellerinin API'ye erişebilmesi için)
+	app.Use(cors.New(cors.Config{
+		AllowOrigins: "*",
+		AllowHeaders: "Origin, Content-Type, Accept",
+	}))
+
+	// Static Dosya Sunumu (HTML panellerini doğrudan sunucudan yayınlamak için)
 	app.Static("/", "./public")
 
-	// 6. Observability Middleware'leri & Prometheus Metrikleri
+	// 8. Observability Middleware'leri & Prometheus Metrikleri
 	prometheus := fiberprometheus.New("stok_servisi")
 	prometheus.RegisterAt(app, "/metrics")
 	app.Use(prometheus.Middleware)
 	app.Use(middleware.CorrelationID())
 
-	// 7. Health Check Rotaları (/healthz/live & /healthz/ready)
+	// 9. Health Check Rotaları (/healthz/live & /healthz/ready)
 	routes.SetupHealthRoutes(app, healthHandler)
 
-	// 8. API Versiyon Grubu ve Ürün Rotaları
+	// 10. API Versiyon Grubu ve Ürün Rotaları
 	api := app.Group("/api/v1")
 	routes.SetupProductRoutes(api, productHandler)
 
