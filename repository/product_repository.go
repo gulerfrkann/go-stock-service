@@ -11,6 +11,7 @@ type ProductRepository interface {
 	GetProducts(page, limit int, search string) ([]models.Product, int64, error)
 	GetByID(id uint) (*models.Product, error)
 	Update(product *models.Product) error
+	UpdateStock(id uint, newStock int) error
 }
 
 type productRepository struct {
@@ -25,24 +26,20 @@ func (r *productRepository) Create(product *models.Product) error {
 	return r.db.Create(product).Error
 }
 
-// GetProducts - Sayfalama (Pagination) ve GIN Trigram destekli ultra hızlı metin araması yapar
 func (r *productRepository) GetProducts(page, limit int, search string) ([]models.Product, int64, error) {
 	var products []models.Product
 	var total int64
 
 	query := r.db.Model(&models.Product{})
 
-	// Arama filtresi varsa pg_trgm GIN indeksini tetikleyecek ILIKE sorgusu eklenir
 	if search != "" {
 		query = query.Where("name ILIKE ?", "%"+search+"%")
 	}
 
-	// Filtrelenmiş toplam kayıt sayısını hesapla
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// Sayfalama (Offset/Limit) ile sadece istenen sayfadaki kayıtları getir
 	offset := (page - 1) * limit
 	err := query.Offset(offset).Limit(limit).Order("id ASC").Find(&products).Error
 
@@ -60,4 +57,8 @@ func (r *productRepository) GetByID(id uint) (*models.Product, error) {
 
 func (r *productRepository) Update(product *models.Product) error {
 	return r.db.Save(product).Error
+}
+
+func (r *productRepository) UpdateStock(id uint, newStock int) error {
+	return r.db.Model(&models.Product{}).Where("id = ?", id).Update("stock", newStock).Error
 }

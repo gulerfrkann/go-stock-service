@@ -1,114 +1,114 @@
-package service
+﻿package service
 
 import (
-	"encoding/json"
-	"fmt"
-	"time"
+    "context"
+    "errors"
+    "fmt"
+    "time"
 
-	"stok-servisi/config"
-	"stok-servisi/models"
-	"stok-servisi/repository"
-
-	"github.com/redis/go-redis/v9"
+    "github.com/redis/go-redis/v9"
+    "stok-servisi/models"
+    "stok-servisi/repository"
 )
 
+var decreaseStockLuaScript = redis.NewScript(`
+    local current_stock = redis.call('GET', KEYS[1])
+    if not current_stock then
+        return -2
+    end
+    if tonumber(current_stock) >= tonumber(ARGV[1]) then
+        return redis.call('DECRBY', KEYS[1], ARGV[1])
+    else
+        return -1
+    end
+`)
+
 type ProductService interface {
-	GetProducts(page, limit int, search string) ([]models.Product, int64, error)
-	CreateProduct(product *models.Product) error
-	ReduceStock(id uint, req models.ReduceStockRequest) (*models.Product, error)
+    CreateProduct(product *models.Product) error
+    GetProducts(page, limit int, search string) ([]models.Product, int64, error)
+    GetProductByID(id uint) (*models.Product, error)
+    UpdateProduct(product *models.Product) error
+    ReduceStock(ctx context.Context, productID uint, quantity int) (int64, error)
 }
 
 type productService struct {
-	repo repository.ProductRepository
-	rdb  *redis.Client
+    repo        repository.ProductRepository
+    redisClient *redis.Client
 }
 
-// Önbellekte saklayacağımız verinin yapısı (Ürün listesi + Toplam satır sayısı)
-type PaginatedProductsResult struct {
-	Products []models.Product `json:"products"`
-	Total    int64            `json:"total"`
-}
-
-func NewProductService(repo repository.ProductRepository, rdb *redis.Client) ProductService {
-	return &productService{
-		repo: repo,
-		rdb:  rdb,
-	}
-}
-
-// GetProducts - Sayfalama ve arama sorgusuna özel dinamik Redis Cache kontrolü yapar
-func (s *productService) GetProducts(page, limit int, search string) ([]models.Product, int64, error) {
-	// Her sayfa, limit ve arama terimi için benzersiz dinamik Cache Key
-	cacheKey := fmt.Sprintf("products:page:%d:limit:%d:search:%s", page, limit, search)
-
-	// 1. ADIM: Redis'te bu spesifik arama/sayfa kombinasyonu var mı kontrol et
-	cachedData, err := s.rdb.Get(config.Ctx, cacheKey).Result()
-	if err == nil {
-		var result PaginatedProductsResult
-		if err := json.Unmarshal([]byte(cachedData), &result); err == nil {
-			fmt.Printf("🚀 VERİ REDIS CACHE'DEN GETİRİLDİ (0ms) -> Key: %s\n", cacheKey)
-			return result.Products, result.Total, nil
-		}
-	}
-
-	// 2. ADIM (CACHE MISS): Veri Redis'te yoksa PostgreSQL (GIN Index) üzerinden çek
-	fmt.Println("🗄️ VERİ POSTGRESQL VERİTABANINDAN ÇEKİLİYOR...")
-	products, total, err := s.repo.GetProducts(page, limit, search)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// 3. ADIM: Çekilen veriyi JSON yapısına çevir ve Redis'e 10 dakika TTL ile kaydet
-	toCache := PaginatedProductsResult{
-		Products: products,
-		Total:    total,
-	}
-	if jsonData, err := json.Marshal(toCache); err == nil {
-		s.rdb.Set(config.Ctx, cacheKey, jsonData, 10*time.Minute)
-	}
-
-	return products, total, nil
+func NewProductService(repo repository.ProductRepository, redisClient *redis.Client) ProductService {
+    return &productService{
+        repo:        repo,
+        redisClient: redisClient,
+    }
 }
 
 func (s *productService) CreateProduct(product *models.Product) error {
-	err := s.repo.Create(product)
-	if err != nil {
-		return err
-	}
-
-	// CACHE INVALIDATION: Yeni ürün eklendiği için oluşturulmuş tüm ürün önbelleklerini temizle
-	s.clearProductsCache()
-	fmt.Println("🧹 YENİ ÜRÜN EKLENDİ - TÜM REDIS ÜRÜN CACHE'LERİ TEMİZLENDİ")
-
-	return nil
+    return s.repo.Create(product)
 }
 
-func (s *productService) ReduceStock(id uint, req models.ReduceStockRequest) (*models.Product, error) {
-	product, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, fmt.Errorf("ürün bulunamadı")
-	}
-
-	if product.Stock < req.Quantity {
-		return nil, fmt.Errorf("yetersiz stok! mevcut stok: %d", product.Stock)
-	}
-
-	product.Stock -= req.Quantity
-	if err := s.repo.Update(product); err != nil {
-		return nil, err
-	}
-
-	// CACHE INVALIDATION: Stok değiştiği için oluşturulmuş tüm ürün önbelleklerini temizle
-	s.clearProductsCache()
-	fmt.Println("🧹 STOK GÜNCELLENDİ - TÜM REDIS ÜRÜN CACHE'LERİ TEMİZLENDİ")
-
-	return product, nil
+func (s *productService) GetProducts(page, limit int, search string) ([]models.Product, int64, error) {
+    return s.repo.GetProducts(page, limit, search)
 }
 
-// clearProductsCache - "products:*" kalıbına uyan tüm önbellek anahtarlarını siler
-func (s *productService) clearProductsCache() {
-	keys, err := s.rdb.Keys(config.Ctx, "products:*").Result()
-	if err == nil && len(keys) > 0 {
-		s.rdb.Del(config.Ctx, keys...)
-	}
+func (s *productService) GetProductByID(id uint) (*models.Product, error) {
+    return s.repo.GetByID(id)
+}
+
+func (s *productService) UpdateProduct(product *models.Product) error {
+    return s.repo.Update(product)
+}
+
+func (s *productService) ReduceStock(ctx context.Context, productID uint, quantity int) (int64, error) {
+    redisKey := fmt.Sprintf("stock:product:%d", productID)
+
+    loadCache := func() error {
+        product, err := s.repo.GetByID(productID)
+        if err != nil {
+            return errors.New("ürün bulunamadı")
+        }
+        s.redisClient.SetNX(ctx, redisKey, product.Stock, 1*time.Hour)
+        return nil
+    }
+
+    exists, err := s.redisClient.Exists(ctx, redisKey).Result()
+    if err != nil || exists == 0 {
+        if err := loadCache(); err != nil {
+            return 0, err
+        }
+    }
+
+    keys := []string{redisKey}
+    args := []interface{}{quantity}
+
+    result, err := decreaseStockLuaScript.Run(ctx, s.redisClient, keys, args...).Int64()
+    if err != nil {
+        return 0, fmt.Errorf("redis script hatası: %v", err)
+    }
+
+    if result == -2 {
+        if err := loadCache(); err != nil {
+            return 0, err
+        }
+        result, err = decreaseStockLuaScript.Run(ctx, s.redisClient, keys, args...).Int64()
+        if err != nil {
+            return 0, fmt.Errorf("redis script hatası: %v", err)
+        }
+    }
+
+    if result == -1 {
+        return 0, errors.New("yetersiz stok! işlem reddedildi")
+    }
+
+    if result == -2 {
+        return 0, errors.New("stok bilgisi senkronize edilemedi, lütfen tekrar deneyin")
+    }
+
+    err = s.repo.UpdateStock(productID, int(result))
+    if err != nil {
+        s.redisClient.Del(ctx, redisKey)
+        return 0, errors.New("veritabanı güncellenirken hata oluştu, işlem geri alındı")
+    }
+
+    return result, nil
 }
