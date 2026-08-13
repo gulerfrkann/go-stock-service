@@ -3,28 +3,31 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise Stok Yönetim Paneli</title>
+    <title>Enterprise Stok & AI Katalog Yönetim Paneli</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="bg-slate-100 p-4 md:p-8 min-h-screen">
     <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-lg border border-slate-200 p-6">
         
-        <!-- Üst Başlık ve İstatistikler -->
+        <!-- Üst Başlık, Arama ve Yeni Ürün Ekle Butonu -->
         <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center pb-6 mb-6 border-b border-slate-200 gap-4">
             <div>
                 <div class="flex items-center space-x-3">
                     <span class="text-3xl">📦</span>
                     <h1 class="text-2xl font-bold text-slate-800">Çoklu Kanal Stok Yönetim Paneli</h1>
                 </div>
-                <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache ile 1.000.000 Ürün Takibi</p>
+                <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache + Otonom AI Kataloglama</p>
             </div>
             
-            <div class="w-full lg:w-96">
-                <div class="relative">
+            <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                <div class="relative w-full sm:w-72">
                     <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ürün, marka veya kategori ara..." 
                            class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
                     <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
+                <button onclick="toggleModal(true)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap">
+                    <span>➕</span> Yeni Ürün & Görsel Ekle
+                </button>
             </div>
         </div>
 
@@ -34,7 +37,8 @@
                 <thead>
                     <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                         <th class="p-3.5">ID</th>
-                        <th class="p-3.5">Ürün Adı</th>
+                        <th class="p-3.5">Görsel</th>
+                        <th class="p-3.5">Ürün Adı & Açıklama</th>
                         <th class="p-3.5">Kaynak Platform</th>
                         <th class="p-3.5">Kategori</th>
                         <th class="p-3.5">Fiyat</th>
@@ -48,7 +52,7 @@
             </table>
         </div>
 
-        <!-- Alt Altbilgi & Sayfalama -->
+        <!-- Altbilgi & Sayfalama -->
         <div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
             <span id="pageInfo" class="text-sm text-slate-600 font-medium">Veriler yükleniyor...</span>
             <div class="flex space-x-2">
@@ -58,20 +62,62 @@
         </div>
     </div>
 
+    <!-- MODAL: YENİ ÜRÜN EKLEME PENCERESİ -->
+    <div id="productModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-6 relative">
+            <button onclick="toggleModal(false)" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+            <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">📦 Yeni Ürün & Görsel Ekle</h2>
+            
+            <form id="modalForm" onsubmit="handleFormSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Ürün Adı</label>
+                    <input type="text" id="modalName" placeholder="Örn: Peçete 100lü Paket" required class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Fiyat (TL)</label>
+                        <input type="number" step="0.01" id="modalPrice" placeholder="25.50" required class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Stok Adedi</label>
+                        <input type="number" id="modalStock" placeholder="100" required class="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Ürün Fotoğrafı (AI Taraması İçin)</label>
+                    <input type="file" id="modalImage" accept="image/*" required class="w-full text-xs text-slate-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer">
+                </div>
+
+                <div id="modalStatus" class="text-xs font-semibold text-center min-h-[20px]"></div>
+
+                <div class="flex justify-end gap-2 pt-2">
+                    <button type="button" onclick="toggleModal(false)" class="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-300">İptal</button>
+                    <button type="submit" id="modalSubmitBtn" class="px-4 py-2 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700">Kaydet ve AI Tetikle</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
+        const API_BASE = "http://localhost:8080/api/v1";
         let currentPage = 1;
         let totalPages = 1;
         let searchTimeout = null;
 
-        // Ürün adından Otomatik Platform, Kategori ve Temiz İsim Çıkarıcı
-        function parseProductDetails(rawName) {
+        function toggleModal(show) {
+            const modal = document.getElementById('productModal');
+            if (show) modal.classList.remove('hidden'), modal.classList.add('flex');
+            else modal.classList.add('hidden'), modal.classList.remove('flex');
+            document.getElementById('modalStatus').innerText = '';
+        }
+
+        function parseProductDetails(rawName, dbCategory) {
             let name = rawName || 'İsimsiz Ürün';
             let platform = 'Genel Pazar Yeri';
             let platformClass = 'bg-slate-100 text-slate-700 border-slate-300';
-            let category = 'Diğer';
+            let category = dbCategory || 'Diğer';
             let categoryClass = 'bg-slate-100 text-slate-600';
 
-            // Platform Tespiti (Veri Setindeki Kod Kalıplarından)
             if (name.endsWith(', Clz') || name.includes(', Clz')) {
                 platform = 'Çiçeksepeti';
                 platformClass = 'bg-pink-50 text-pink-700 border-pink-200';
@@ -88,20 +134,21 @@
                 platformClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
             }
 
-            // Kategori Tespiti (Anahtar Kelimelerden)
-            const lower = name.toLowerCase();
-            if (lower.includes('macbook') || lower.includes('bilgisayar') || lower.includes('telefon')) {
-                category = 'Elektronik & Teknoloji';
-                categoryClass = 'bg-indigo-50 text-indigo-700 border border-indigo-100';
-            } else if (lower.includes('kalem') || lower.includes('faber') || lower.includes('grip') || lower.includes('versatil') || lower.includes('silgi')) {
-                category = 'Kırtasiye & Ofis';
-                categoryClass = 'bg-yellow-50 text-yellow-800 border border-yellow-100';
-            } else if (lower.includes('halı yıkama') || lower.includes('sinbo') || lower.includes('makin')) {
-                category = 'Ev & Küçük Aletleri';
-                categoryClass = 'bg-purple-50 text-purple-700 border border-purple-100';
+            if (dbCategory && dbCategory !== 'Genel' && dbCategory !== '' && dbCategory !== 'Diğer') {
+                category = dbCategory;
+                categoryClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold';
             } else {
-                category = 'Kitap & Medya';
-                categoryClass = 'bg-blue-50 text-blue-700 border border-blue-100';
+                const lower = name.toLowerCase();
+                if (lower.includes('macbook') || lower.includes('bilgisayar') || lower.includes('telefon')) {
+                    category = 'Elektronik & Teknoloji';
+                    categoryClass = 'bg-indigo-50 text-indigo-700 border border-indigo-100';
+                } else if (lower.includes('kalem') || lower.includes('faber') || lower.includes('grip') || lower.includes('versatil') || lower.includes('silgi')) {
+                    category = 'Kırtasiye & Ofis';
+                    categoryClass = 'bg-yellow-50 text-yellow-800 border border-yellow-100';
+                } else if (lower.includes('halı yıkama') || lower.includes('sinbo') || lower.includes('makin')) {
+                    category = 'Ev & Küçük Aletleri';
+                    categoryClass = 'bg-purple-50 text-purple-700 border border-purple-100';
+                }
             }
 
             return { cleanName: name, platform, platformClass, category, categoryClass };
@@ -109,28 +156,49 @@
 
         async function fetchProducts() {
             const search = document.getElementById('searchInput').value;
-            const response = await fetch(`/api/v1/products?page=${currentPage}&limit=15&search=${encodeURIComponent(search)}`);
+            const response = await fetch(`${API_BASE}/products?page=${currentPage}&limit=15&search=${encodeURIComponent(search)}`);
             const result = await response.json();
 
             const tbody = document.getElementById('productTable');
             tbody.innerHTML = '';
 
             if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="7" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
                 return;
             }
 
             result.data.forEach(p => {
-                const details = parseProductDetails(p.name);
+                const prodName = p.name || p.Name || 'İsimsiz Ürün';
+                const prodStock = p.stock !== undefined ? p.stock : (p.Stock !== undefined ? p.Stock : 0);
+                const prodPrice = p.price !== undefined ? p.price : (p.Price !== undefined ? p.Price : 0);
+                const prodID = p.ID || p.id || '';
+                const dbCategory = p.category || p.Category || '';
+                const description = p.description || p.Description || '';
+                const isAICataloged = p.ai_cataloged || p.AICataloged || p.aiCataloged;
+                const imgPath = p.image_url || p.ImageURL || '';
+
+                const imgUrl = imgPath ? `http://localhost:8080${imgPath}` : 'https://via.placeholder.com/50?text=Görsel';
+
+                const details = parseProductDetails(prodName, dbCategory);
                 
-                const stockBadge = p.stock < 50 
-                    ? `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">⚠️ Kritik (${p.stock})</span>`
-                    : `<span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">✓ Stokta (${p.stock})</span>`;
+                let stockBadge = prodStock < 50 
+                    ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">⚠️ Kritik (${prodStock})</span>`
+                    : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">✓ Stokta (${prodStock})</span>`;
+
+                if (isAICataloged) {
+                    stockBadge += `<br><span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300">🤖 AI Kataloglandı</span>`;
+                }
 
                 tbody.innerHTML += `
                     <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="p-3.5 font-mono text-xs text-slate-400">#${p.ID}</td>
-                        <td class="p-3.5 font-semibold text-slate-800 max-w-md truncate" title="${details.cleanName}">${details.cleanName}</td>
+                        <td class="p-3.5 font-mono text-xs text-slate-400">#${prodID}</td>
+                        <td class="p-3.5">
+                            <img src="${imgUrl}" class="w-12 h-12 object-cover rounded-lg border border-slate-200 bg-slate-50" alt="Görsel">
+                        </td>
+                        <td class="p-3.5 max-w-xs">
+                            <div class="font-semibold text-slate-800 truncate" title="${details.cleanName}">${details.cleanName}</div>
+                            ${description ? `<div class="text-xs text-slate-500 truncate mt-0.5" title="${description}">${description}</div>` : ''}
+                        </td>
                         <td class="p-3.5">
                             <span class="px-2.5 py-1 rounded-md text-xs font-semibold border ${details.platformClass}">
                                 ${details.platform}
@@ -141,17 +209,78 @@
                                 ${details.category}
                             </span>
                         </td>
-                        <td class="p-3.5 font-medium text-slate-700">₺${p.price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
-                        <td class="p-3.5 font-semibold text-slate-700">${p.stock.toLocaleString('tr-TR')}</td>
+                        <td class="p-3.5 font-medium text-slate-700">₺${prodPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
+                        <td class="p-3.5 font-semibold text-slate-700">${prodStock.toLocaleString('tr-TR')}</td>
                         <td class="p-3.5">${stockBadge}</td>
                     </tr>
                 `;
             });
 
-            totalPages = result.total_pages;
-            document.getElementById('pageInfo').innerText = `Sayfa ${result.page} / ${result.total_pages.toLocaleString('tr-TR')} (Toplam ${result.total.toLocaleString('tr-TR')} ürün)`;
+            totalPages = result.total_pages || 1;
+            const totalItems = result.total || result.data.length;
+            const curPage = result.page || 1;
+
+            document.getElementById('pageInfo').innerText = `Sayfa ${curPage} / ${totalPages.toLocaleString('tr-TR')} (Toplam ${totalItems.toLocaleString('tr-TR')} ürün)`;
             document.getElementById('prevBtn').disabled = currentPage === 1;
             document.getElementById('nextBtn').disabled = currentPage >= totalPages;
+        }
+
+        async function handleFormSubmit(e) {
+            e.preventDefault();
+            const btn = document.getElementById('modalSubmitBtn');
+            const status = document.getElementById('modalStatus');
+            
+            btn.disabled = true;
+            status.style.color = '#2563eb';
+            status.innerText = '1/2: Ürün veritabanına ekleniyor...';
+
+            try {
+                const productData = {
+                    name: document.getElementById('modalName').value,
+                    price: parseFloat(document.getElementById('modalPrice').value),
+                    stock: parseInt(document.getElementById('modalStock').value)
+                };
+
+                const prodRes = await fetch(`${API_BASE}/products`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(productData)
+                });
+
+                const newProduct = await prodRes.json();
+                const productId = newProduct.ID || newProduct.id || (newProduct.data ? newProduct.data.ID || newProduct.data.id : null);
+
+                if (!productId) throw new Error('Ürün oluşturulamadı.');
+
+                status.innerText = '2/2: Görsel yükleniyor ve AI tetikleniyor...';
+
+                const formData = new FormData();
+                formData.append('image', document.getElementById('modalImage').files[0]);
+
+                const imgRes = await fetch(`${API_BASE}/products/${productId}/upload-image`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!imgRes.ok) throw new Error('Görsel yüklenemedi.');
+
+                status.style.color = '#059669';
+                status.innerText = '✅ Başarılı! Yapay zeka resmi arka planda inceliyor...';
+
+                document.getElementById('modalForm').reset();
+                setTimeout(() => toggleModal(false), 1500);
+
+                // Tabloyu periyodik yenile (1sn, 4sn, 7sn)
+                setTimeout(fetchProducts, 1000);
+                setTimeout(fetchProducts, 4000);
+                setTimeout(fetchProducts, 7000);
+
+            } catch (err) {
+                status.style.color = '#dc2626';
+                status.innerText = '❌ Hata: ' + err.message;
+            } finally {
+                btn.disabled = false;
+            }
         }
 
         function changePage(delta) {

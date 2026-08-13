@@ -9,35 +9,38 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Go'da Redis işlemleri eşzamanlılık (concurrency) ve zamanaşımı (timeout) 
-// yönetimi için bir Context nesnesine ihtiyaç duyar.
 var Ctx = context.Background()
 
 func ConnectRedis() *redis.Client {
-	redisHost := os.Getenv("REDIS_HOST")
-	if redisHost == "" {
-		redisHost = "localhost" // Docker dışında çalıştırılırsa varsayılan adres
+	// docker-compose.yml içinde tanımlanan REDIS_ADDR değişkenini oku
+	addr := os.Getenv("REDIS_ADDR")
+
+	// Eğer REDIS_ADDR yoksa REDIS_HOST ve REDIS_PORT değerlerini dene
+	if addr == "" {
+		redisHost := os.Getenv("REDIS_HOST")
+		if redisHost == "" {
+			redisHost = "redis-cache" // Docker ağındaki servis adı
+		}
+
+		redisPort := os.Getenv("REDIS_PORT")
+		if redisPort == "" {
+			redisPort = "6379"
+		}
+		addr = fmt.Sprintf("%s:%s", redisHost, redisPort)
 	}
 
-	redisPort := os.Getenv("REDIS_PORT")
-	if redisPort == "" {
-		redisPort = "6379" // Standart Redis portu
-	}
-
-	// Redis İstemcisi Oluşturma
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", redisHost, redisPort),
-		Password: "", // Parola belirlemediğimiz için boş bırakıyoruz
-		DB:       0,  // Varsayılan veritabanı indeksini (0) kullanıyoruz
+		Addr:     addr,
+		Password: "",
+		DB:       0,
 	})
 
-	// PING Komutuyla Bağlantı Testi
-	// Redis sunucusuna "Orada mısın?" sorusu atarız, "PONG" cevabı bekleriz.
 	_, err := rdb.Ping(Ctx).Result()
 	if err != nil {
-		log.Fatalf("Redis sunucusuna bağlanılamadı: %v", err)
+		log.Printf("⚠️ Redis bağlantı uyarısı (%s): %v. İşleme devam ediliyor...", addr, err)
+		return rdb
 	}
 
-	log.Println("Redis bağlantısı başarıyla sağlandı!")
+	log.Println("✅ Redis bağlantısı başarıyla sağlandı!")
 	return rdb
 }
