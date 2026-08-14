@@ -218,3 +218,28 @@ func (h *ProductHandler) UploadImage(c *fiber.Ctx) error {
 		},
 	})
 }
+// GetRecommendations Ürün Tavsiyeleri ve Skorlama Ucu (AI & Cold Start Destekli)
+func (h *ProductHandler) GetRecommendations(c *fiber.Ctx) error {
+	idParam := c.Params("id")
+	productID, err := strconv.ParseUint(idParam, 10, 32)
+	if err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"success": false,
+			"error":   "Geçersiz ürün ID'si",
+		})
+	}
+
+	recommendations, err := h.service.GetRecommendations(c.Context(), uint(productID))
+	if err != nil {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{
+			"success": false,
+			"error":   err.Error(),
+		})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(fiber.Map{
+		"success":         true,
+		"product_id":      productID,
+		"recommendations": recommendations,
+	})
+}

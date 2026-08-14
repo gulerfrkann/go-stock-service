@@ -16,14 +16,14 @@
                     <span class="text-3xl">📦</span>
                     <h1 class="text-2xl font-bold text-slate-800">Çoklu Kanal Stok Yönetim Paneli</h1>
                 </div>
-                <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache + Otonom AI Kataloglama</p>
+                <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache + Otonom AI Kataloglama & Tavsiye Motoru</p>
             </div>
             
             <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
                 <div class="relative w-full sm:w-72">
                     <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ürün, marka veya kategori ara..." 
                            class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
-                    <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                 </div>
                 <button onclick="toggleModal(true)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap">
                     <span>➕</span> Yeni Ürün & Görsel Ekle
@@ -44,6 +44,7 @@
                         <th class="p-3.5">Fiyat</th>
                         <th class="p-3.5">Stok</th>
                         <th class="p-3.5">Durum</th>
+                        <th class="p-3.5 text-center">İşlemler</th>
                     </tr>
                 </thead>
                 <tbody id="productTable" class="divide-y divide-slate-200 text-sm">
@@ -98,6 +99,25 @@
         </div>
     </div>
 
+    <!-- MODAL: ÜRÜN TAVSİYELERİ PENCERESİ -->
+    <div id="recommendationModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 relative max-h-[90vh] flex flex-col">
+            <button onclick="toggleRecommendationModal(false)" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+            <div class="mb-4 border-b pb-3 pr-8">
+                <h2 id="recModalTitle" class="text-xl font-bold text-slate-800">💡 Yapay Zeka Ürün Tavsiyeleri</h2>
+                <p id="recModalSubtitle" class="text-xs text-slate-500 mt-0.5">Seçilen ürün için eşleşen alternatifler ve popüler yedekler</p>
+            </div>
+            
+            <div id="recModalBody" class="overflow-y-auto space-y-3 flex-1 pr-1">
+                <!-- JavaScript ile öneriler buraya dolacak -->
+            </div>
+
+            <div class="mt-4 pt-3 border-t flex justify-end">
+                <button onclick="toggleRecommendationModal(false)" class="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-300">Kapat</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const API_BASE = "http://localhost:8080/api/v1";
         let currentPage = 1;
@@ -109,6 +129,54 @@
             if (show) modal.classList.remove('hidden'), modal.classList.add('flex');
             else modal.classList.add('hidden'), modal.classList.remove('flex');
             document.getElementById('modalStatus').innerText = '';
+        }
+
+        function toggleRecommendationModal(show) {
+            const modal = document.getElementById('recommendationModal');
+            if (show) modal.classList.remove('hidden'), modal.classList.add('flex');
+            else modal.classList.add('hidden'), modal.classList.remove('flex');
+        }
+
+        async function openRecommendations(productId, productName) {
+            toggleRecommendationModal(true);
+            document.getElementById('recModalTitle').innerText = `💡 "${productName}" İçin Tavsiyeler`;
+            const bodyContainer = document.getElementById('recModalBody');
+            bodyContainer.innerHTML = `<div class="text-center py-8 text-slate-400 animate-pulse">Yapay zeka tavsiyeleri hesaplanıyor...</div>`;
+
+            try {
+                const response = await fetch(`${API_BASE}/products/${productId}/recommendations`);
+                const data = await response.json();
+
+                bodyContainer.innerHTML = '';
+
+                if (!data.success || !data.recommendations || data.recommendations.length === 0) {
+                    bodyContainer.innerHTML = `<div class="text-center py-8 text-slate-400">Bu ürün için henüz tavsiye bulunamadı.</div>`;
+                    return;
+                }
+
+                data.recommendations.forEach((rec, index) => {
+                    bodyContainer.innerHTML += `
+                        <div class="p-4 bg-slate-50 border border-slate-200 rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 hover:bg-slate-100 transition-all">
+                            <div>
+                                <div class="flex items-center gap-2">
+                                    <span class="text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">#${index + 1} Öneri</span>
+                                    <h4 class="font-bold text-slate-800 text-sm">${rec.name}</h4>
+                                </div>
+                                <div class="flex items-center gap-2 mt-1">
+                                    <span class="text-xs text-slate-500 bg-white px-2 py-0.5 rounded border border-slate-200">Kategori: <b>${rec.category}</b></span>
+                                    <span class="text-xs text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded border border-emerald-100 font-semibold">Uyum Skoru: %${(rec.score * 100).toFixed(0)}</span>
+                                </div>
+                                <p class="text-xs text-slate-600 mt-2 bg-white p-2 rounded border border-slate-200 flex items-center gap-1.5">
+                                    <span>🧠</span> <b>Neden Önerildi:</b> ${rec.reason}
+                                </p>
+                            </div>
+                        </div>
+                    `;
+                });
+
+            } catch (err) {
+                bodyContainer.innerHTML = `<div class="text-center py-8 text-red-500 text-xs font-semibold">❌ Tavsiyeler yüklenirken hata oluştu: ${err.message}</div>`;
+            }
         }
 
         function parseProductDetails(rawName, dbCategory) {
@@ -163,7 +231,7 @@
             tbody.innerHTML = '';
 
             if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
                 return;
             }
 
@@ -212,6 +280,11 @@
                         <td class="p-3.5 font-medium text-slate-700">₺${prodPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
                         <td class="p-3.5 font-semibold text-slate-700">${prodStock.toLocaleString('tr-TR')}</td>
                         <td class="p-3.5">${stockBadge}</td>
+                        <td class="p-3.5 text-center">
+                            <button onclick="openRecommendations(${prodID}, '${details.cleanName.replace(/'/g, "\\'")}')" class="px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center justify-center gap-1 mx-auto whitespace-nowrap">
+                                <span>💡</span> Tavsiyeler
+                            </button>
+                        </td>
                     </tr>
                 `;
             });
@@ -270,7 +343,6 @@
                 document.getElementById('modalForm').reset();
                 setTimeout(() => toggleModal(false), 1500);
 
-                // Tabloyu periyodik yenile (1sn, 4sn, 7sn)
                 setTimeout(fetchProducts, 1000);
                 setTimeout(fetchProducts, 4000);
                 setTimeout(fetchProducts, 7000);

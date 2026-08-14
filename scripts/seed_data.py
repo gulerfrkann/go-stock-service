@@ -74,4 +74,4 @@ cursor.close()
 conn.close()
 con.close()
 
-print(f"\n🎉 İŞLEM TAMAMLANDI! Toplam {total_inserted:,} adet ürün kilitlenme olmadan veritabanına eklendi.")
+print(f"\n İŞLEM TAMAMLANDI! Toplam {total_inserted:,} adet ürün kilitlenme olmadan veritabanına eklendi.")

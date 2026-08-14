@@ -66,6 +66,9 @@ type ProductService interface {
 	ReduceStock(ctx context.Context, productID uint, quantity int) (int64, error)
 	ReserveStock(ctx context.Context, req models.ReserveStockRequest) (int64, error)
 	UploadProductImage(productID uint, imageURL, imagePath string) error
+	
+	// YENİ EKLENEN TAVSİYE METODU:
+	GetRecommendations(ctx context.Context, id uint) ([]models.RecommendationResponse, error)
 }
 
 type productService struct {
@@ -298,4 +301,49 @@ func (s *productService) UploadProductImage(productID uint, imageURL, imagePath 
 	)
 
 	return nil
+}
+
+// GetRecommendations, ürün için tavsiyeleri getirir. (Yapay Zeka ve Cold Start stratejisi içerir)
+func (s *productService) GetRecommendations(ctx context.Context, id uint) ([]models.RecommendationResponse, error) {
+	var recommendations []models.RecommendationResponse
+
+	// 1. Önce kullanıcının tıkladığı asıl ürünü veritabanından bulalım
+	product, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err // Ürün bulunamadıysa hata dön
+	}
+
+	// 2. ADIM: REDIS ve YAPAY ZEKA (Yakında Python burayı besleyecek)
+	// TODO: Redis'e gidip "product.ID" için Python'un ürettiği TF-IDF/Apriori sonuçlarını soracağız.
+
+	// 3. ADIM: COLD START KORUMASI (Eğer ürün yeniyse ve Redis'te AI verisi yoksa)
+	if len(recommendations) == 0 {
+		// FALLBACK B PLANI: Python henüz bu ürünü işlemediyse,
+		// aynı kategorideki diğer ürünleri varsayılan olarak öner.
+		
+		// Mevcut sistemindeki GetProducts fonksiyonuyla ilk 50 ürünü çekiyoruz
+		allProducts, _, err := s.repo.GetProducts(1, 50, "")
+		
+		if err == nil {
+			for _, p := range allProducts {
+				// Ürünün kendisini önerme ve aynı kategorideki ürünleri seç
+				if p.ID != product.ID && p.Category == product.Category {
+					recommendations = append(recommendations, models.RecommendationResponse{
+						ProductID: p.ID,
+						Name:      p.Name,
+						Category:  p.Category,
+						Score:     0.75, // Fallback stratejisi olduğu için varsayılan bir güven skoru (%75)
+						Reason:    "Aynı Kategorideki Popüler Ürün (Cold Start Koruması)",
+					})
+				}
+				
+				// Listeyi çok uzatmamak için en fazla 3 öneri verelim
+				if len(recommendations) >= 3 {
+					break
+				}
+			}
+		}
+	}
+
+	return recommendations, nil
 }
