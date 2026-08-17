@@ -9,9 +9,13 @@
 .idea/
 .DS_Store
 *.log
-# Hassas veriler ve veritabanı dosyaları
+
+# Hassas veriler, veritabanı ve büyük veri dosyaları
 .env
 *.csv
 *.sql
 *.xlsx
 *.parquet
+
+# Qdrant Vektör Veritabanı Lokal Dizini
+qdrant_local_db/
