@@ -1,51 +1,66 @@
-#  Go Stock Service (Stok Yönetimi Mikroservisi)
+# Go Stock Service & Recommendation Engine
 
-![Go Version](https://img.shields.io/badge/Go-1.22+-00ADD8?style=flat&logo=go)
-![Fiber Framework](https://img.shields.io/badge/Fiber-v2-000000?style=flat&logo=gofiber)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-15-4169E1?style=flat&logo=postgresql)
-![Redis](https://img.shields.io/badge/Redis-7-DC382D?style=flat&logo=redis)
-![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat&logo=docker)
-![CI/CD](https://github.com/gulerfrkann/go-stock-service/actions/workflows/ci.yml/badge.svg)
-
-Go (Golang) ve Fiber framework kullanılarak geliştirilmiş; Docker mimarisi üzerinde PostgreSQL ile veri kalıcılığı sağlayan, Redis ile **Cache-Aside Pattern** performans önbelleklemesi sunan ve GitHub Actions ile sürekli entegrasyonu (CI/CD) yapılan yüksek performanslı stok yönetimi RESTful API mikroservisi.
+Go (Golang) ve Fiber framework kullanılarak geliştirilmiş, PostgreSQL ile veri kalıcılığı sağlayan, Redis ile Cache-Aside Pattern ve NLP bazlı tavsiye önbelleklemesi sunan, Docker Compose mimarisi üzerinde izole çalışan yüksek performanslı stok yönetimi ve ürün tavsiye mikroservisidir.
 
 ---
 
-##  Mimari ve Teknolojiler
+## Mimari ve Teknolojiler
 
-- **Programlama Dili:** Go (Golang)
-- **Web Framework:** [Fiber v2](https://gofiber.io/) (Yüksek performanslı Go web framework'ü)
-- **ORM:** [GORM](https://gorm.io/) (Object Relational Mapping)
-- **Veritabanı:** PostgreSQL
-- **Önbellekleme (Caching):** Redis (Cache-Aside Pattern)
+- **Backend:** Go (Golang) 1.22+
+- **Web Framework:** Fiber v2
+- **ORM:** GORM (PostgreSQL Driver)
+- **Veritabanı:** PostgreSQL 15
+- **Önbellek & Vektör Önbellekleme:** Redis 7
+- **Makine Öğrenmesi & NLP:** Python 3.10+, Scikit-learn (TF-IDF Vectorization, Cosine Similarity), Pandas
 - **Konteynerizasyon:** Docker & Docker Compose
 - **Dokümantasyon:** Swagger UI (OpenAPI 3.0)
-- **Test & CI/CD:** Testify, Miniredis & GitHub Actions
+- **Test & Sürekli Entegrasyon:** Testify, Miniredis, GitHub Actions (CI/CD)
 
 ---
 
-##  Öne Çıkan Özellikler & Önbellek Stratejisi
+## Sistem Özellikleri ve Tasarım Desenleri
 
-- **Clean Architecture:** Katmanlı mimari (Config, Handler, Service, Repository, Model) prensiplerine uygun yapı.
-- **Cache-Aside Pattern (Önbellek Yönetimi):**
-  - **Cache Hit:** Ürün listeleme istekleri (`GET /api/v1/products`) öncelikle Redis RAM önbelleğinden milisaniyeler seviyesinde yanıtlanır.
-  - **Cache Miss:** Önbellekte veri olmaması durumunda veri PostgreSQL'den okunur ve 10 dakikalık yaşam süresi (TTL) ile Redis'e kaydedilir.
-  - **Cache Invalidation:** Yeni ürün eklendiğinde (`POST`) veya stok düşürüldüğünde (`POST /reduce-stock`) Redis'teki eski veri otomatik temizlenir.
-- **İnteraktif API Dokümantasyonu:** Swagger UI entegrasyonu ile canlı test imkanı.
-- **Birim Testler (Unit Testing):** Service katmanı için `testify/mock` ve `miniredis` kullanılarak yazılmış bağımsız birim testleri.
-- **Otomatik CI/CD:** Yapılan her commit ve Pull Request'te GitHub Actions üzerinde otomatik koşulan test senaryoları.
+### 1. Katmanlı Mimari (Clean Architecture)
+Proje; Handler, Service, Repository, Model ve Config katmanlarına ayrılarak SOLID prensiplerine uygun, genişletilebilir ve test edilebilir bir yapıda tasarlanmıştır.
+
+### 2. Önbellek Stratejisi (Cache-Aside Pattern)
+- **Cache Hit:** Ürün listeleme istekleri (`GET /api/v1/products`) doğrudan Redis önbelleğinden milisaniyeler seviyesinde sunulur.
+- **Cache Miss:** Önbellekte veri bulunamadığında sorgu PostgreSQL'e iletilir ve sonuç belirlenen TTL (10 dakika) süresiyle Redis'e yazılır.
+- **Cache Invalidation:** Yeni ürün eklendiğinde (`POST /api/v1/products`) veya stok düşürüldüğünde (`POST /api/v1/products/reduce-stock`) Redis önbelleği otomatik olarak temizlenir.
+
+### 3. Kategori Bazlı NLP Tavsiye Motoru
+- **ETL ve Veri Hijyeni:** Ham ERP veri setlerindeki muhasebe, iskonto, kampanya farkı ve kargo gibi ticari olmayan fatura kalemleri filtreleme katmanında ayıklanır.
+- **İzole TF-IDF Hesaplaması:** Ürünler kategorilerine göre gruplandırılarak metin benzerlikleri (TF-IDF & Cosine Similarity) kategori içinde izole hesaplanır. Bu sayede bellek tüketimi optimize edilir ve farklı kategoriler arasındaki anlamsal sapmalar engellenir.
+- **Hibrit Fallback Mekanizması:** Tavsiye isteklerinde (`GET /api/v1/products/:id/recommendations`) sistem sırasıyla:
+  1. Redis üzerindeki önceden hesaplanmış NLP matrisine bakar (O(1) erişim hızı).
+  2. Önbellekte bulunmayan yeni ürünler için Go servis katmanında kategori bazlı güvenli arama fallback'ini devreye sokarak cevapsız istek kalmamasını sağlar.
 
 ---
 
-##  Projenin Çalıştırılması (Docker Compose)
+## API Uç Noktaları
 
-Projede PostgreSQL, Redis ve Go API servisleri Docker ağı (`stok-network`) üzerinde izole bir şekilde çalışır.
+| Metot | Uç Nokta | Açıklama |
+|---|---|---|
+| GET | `/api/v1/products` | Sayfalanmış ürün listesini döner (Redis Cache) |
+| GET | `/api/v1/products/:id` | Belirtilen ürünün detayını döner |
+| POST | `/api/v1/products` | Yeni ürün kaydı oluşturur (Cache Invalidation) |
+| POST | `/api/v1/products/reduce-stock` | Belirtilen ürünün stoğunu düşürür |
+| GET | `/api/v1/products/:id/recommendations` | Ürüne ait yapay zeka/kategori bazlı alternatifleri listeler |
+| GET | `/swagger/*` | Canlı Swagger API dokümantasyonu |
+
+---
+
+## Kurulum ve Çalıştırma
 
 ### Gereksinimler
 - Docker & Docker Compose
+- Python 3.10+ (Veri aktarımı ve ML pipeline çalıştırmak için)
 
-### Adımlar
+### 1. Servisleri Başlatma
 
-1. Repoyu klonla:
-   git clone [https://github.com/gulerfrkann/go-stock-service.git](https://github.com/gulerfrkann/go-stock-service.git)
-   cd go-stock-service
+Repoyu klonlayıp Docker Compose ile PostgreSQL, Redis ve Go mikroservisini ayağa kaldırın:
+
+```bash
+git clone [https://github.com/gulerfrkann/go-stock-service.git](https://github.com/gulerfrkann/go-stock-service.git)
+cd go-stock-service
+docker-compose up -d
