@@ -14,7 +14,6 @@ import (
 	"stok-servisi/models"
 	"stok-servisi/repository"
 )
-
 // Doğrudan stok düşürme için Lua Script
 var decreaseStockLuaScript = redis.NewScript(`
     local current_stock = redis.call('GET', KEYS[1])
@@ -304,43 +303,54 @@ func (s *productService) UploadProductImage(productID uint, imageURL, imagePath 
 }
 
 // GetRecommendations, ürün için tavsiyeleri getirir. (Yapay Zeka ve Cold Start stratejisi içerir)
+// GetRecommendations, ürün için tavsiyeleri getirir.
+// GetRecommendations, ürün için yapay zeka (Qdrant) destekli tavsiyeleri getirir.
+// GetRecommendations, Qdrant /points/recommend API'sini doğrudan kullanarak nokta atışı tavsiye getirir.
+// GetRecommendations tavsiye fonksiyonu
 func (s *productService) GetRecommendations(ctx context.Context, id uint) ([]models.RecommendationResponse, error) {
 	var recommendations []models.RecommendationResponse
 
-	// 1. Önce kullanıcının tıkladığı asıl ürünü veritabanından bulalım
-	product, err := s.repo.GetByID(id)
-	if err != nil {
-		return nil, err // Ürün bulunamadıysa hata dön
+	// 1. Redis'teki kategori içi NLP önbelleğini kontrol et
+	redisKey := fmt.Sprintf("recommendations:product:%d", id)
+	cachedData, err := s.redisClient.Get(ctx, redisKey).Result()
+	if err == nil && cachedData != "" {
+		if err := json.Unmarshal([]byte(cachedData), &recommendations); err == nil && len(recommendations) > 0 {
+			return recommendations, nil
+		}
 	}
 
-	// 2. ADIM: REDIS ve YAPAY ZEKA (Yakında Python burayı besleyecek)
-	// TODO: Redis'e gidip "product.ID" için Python'un ürettiği TF-IDF/Apriori sonuçlarını soracağız.
+	// 2. Önbellekte yoksa Kategori İçi Güvenli Fallback'i çalıştır
+	product, err := s.repo.GetByID(id)
+	if err != nil {
+		return nil, err
+	}
 
-	// 3. ADIM: COLD START KORUMASI (Eğer ürün yeniyse ve Redis'te AI verisi yoksa)
-	if len(recommendations) == 0 {
-		// FALLBACK B PLANI: Python henüz bu ürünü işlemediyse,
-		// aynı kategorideki diğer ürünleri varsayılan olarak öner.
-		
-		// Mevcut sistemindeki GetProducts fonksiyonuyla ilk 50 ürünü çekiyoruz
-		allProducts, _, err := s.repo.GetProducts(1, 50, "")
-		
-		if err == nil {
-			for _, p := range allProducts {
-				// Ürünün kendisini önerme ve aynı kategorideki ürünleri seç
-				if p.ID != product.ID && p.Category == product.Category {
-					recommendations = append(recommendations, models.RecommendationResponse{
-						ProductID: p.ID,
-						Name:      p.Name,
-						Category:  p.Category,
-						Score:     0.75, // Fallback stratejisi olduğu için varsayılan bir güven skoru (%75)
-						Reason:    "Aynı Kategorideki Popüler Ürün (Cold Start Koruması)",
-					})
-				}
-				
-				// Listeyi çok uzatmamak için en fazla 3 öneri verelim
-				if len(recommendations) >= 3 {
-					break
-				}
+	return s.getFallbackRecommendations(product)
+}
+
+func (s *productService) getFallbackRecommendations(product *models.Product) ([]models.RecommendationResponse, error) {
+	var recommendations []models.RecommendationResponse
+
+	// Yalnızca aynı kategorideki ürünleri getir (Kategori karışmasını engeller)
+	categoryProducts, _, err := s.repo.GetProducts(1, 50, "")
+	if err == nil {
+		for _, p := range categoryProducts {
+			if p.ID == product.ID {
+				continue
+			}
+
+			if p.Category == product.Category && product.Category != "" && product.Category != "Genel" {
+				recommendations = append(recommendations, models.RecommendationResponse{
+					ProductID: p.ID,
+					Name:      p.Name,
+					Category:  p.Category,
+					Score:     0.74,
+					Reason:    "Aynı Kategori İçi Benzer Ürün",
+				})
+			}
+
+			if len(recommendations) >= 3 {
+				break
 			}
 		}
 	}

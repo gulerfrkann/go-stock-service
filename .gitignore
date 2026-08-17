@@ -5,6 +5,8 @@
 *.dylib
 *.test
 *.out
+main
+__pycache__/
 .vscode/
 .idea/
 .DS_Store
