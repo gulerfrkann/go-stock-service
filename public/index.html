@@ -3,69 +3,139 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enterprise Stok & AI Katalog Yönetim Paneli</title>
+    <title>Unified Microservice Platform</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+    </style>
 </head>
-<body class="bg-slate-100 p-4 md:p-8 min-h-screen">
-    <div class="max-w-7xl mx-auto bg-white rounded-xl shadow-lg border border-slate-200 p-6">
-        
-        <!-- Üst Başlık, Arama ve Yeni Ürün Ekle Butonu -->
-        <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center pb-6 mb-6 border-b border-slate-200 gap-4">
-            <div>
-                <div class="flex items-center space-x-3">
-                    <span class="text-3xl">📦</span>
-                    <h1 class="text-2xl font-bold text-slate-800">Çoklu Kanal Stok Yönetim Paneli</h1>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col font-sans">
+
+    <!-- Üst Gezinme ve Sekme Menüsü -->
+    <header class="bg-slate-950 border-b border-slate-800 sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center justify-between gap-4">
+            <div class="flex items-center space-x-3">
+                <div class="h-9 w-9 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400 font-bold text-lg">
+                    <i class="fa-solid fa-layer-group"></i>
                 </div>
-                <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache + Otonom AI Kataloglama & Tavsiye Motoru</p>
+                <div>
+                    <h1 class="text-base font-bold text-white leading-tight">Dağıtık Stok & AI Ekosistemi</h1>
+                    <p class="text-[11px] text-slate-400">Go • Redis • RabbitMQ • Qdrant • Mailtrap</p>
+                </div>
             </div>
-            
-            <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
-                <div class="relative w-full sm:w-72">
-                    <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ürün, marka veya kategori ara..." 
-                           class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
-                    <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
-                </div>
-                <button onclick="toggleModal(true)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap">
-                    <span>➕</span> Yeni Ürün & Görsel Ekle
+
+            <!-- Sekme Butonları -->
+            <nav class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+                <button onclick="switchTab('stockTab')" id="btn-stockTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white transition-all">
+                    <i class="fa-solid fa-boxes-stacked mr-1.5"></i> Stok Yönetimi
                 </button>
+                <button onclick="switchTab('swaggerTab')" id="btn-swaggerTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-code mr-1.5"></i> Swagger API
+                </button>
+                <button onclick="switchTab('rabbitTab')" id="btn-rabbitTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-paper-plane mr-1.5"></i> RabbitMQ & DLQ
+                </button>
+                <button onclick="switchTab('qdrantTab')" id="btn-qdrantTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-brain mr-1.5"></i> Qdrant Vektör
+                </button>
+                <a href="https://mailtrap.io" target="_blank" class="px-3.5 py-1.5 rounded-lg text-xs font-medium text-emerald-400 hover:bg-emerald-500/10 transition-all flex items-center">
+                    <i class="fa-solid fa-envelope-open-text mr-1.5"></i> Mailtrap
+                    <i class="fa-solid fa-arrow-up-right-from-square text-[10px] ml-1"></i>
+                </a>
+            </nav>
+        </div>
+    </header>
+
+    <!-- TAB 1: STOK YÖNETİMİ & KATALOG -->
+    <div id="stockTab" class="tab-content active p-4 md:p-6 flex-1">
+        <div class="max-w-7xl mx-auto bg-white text-slate-800 rounded-xl shadow-lg border border-slate-200 p-6">
+            
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center pb-6 mb-6 border-b border-slate-200 gap-4">
+                <div>
+                    <div class="flex items-center space-x-3">
+                        <span class="text-3xl">📦</span>
+                        <h2 class="text-2xl font-bold text-slate-800">Çoklu Kanal Stok Yönetim Paneli</h2>
+                    </div>
+                    <p class="text-sm text-slate-500 mt-1">PostgreSQL + GIN Index + Redis Cache + Transactional Outbox & Qdrant Tavsiye Motoru</p>
+                </div>
+                
+                <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
+                    <div class="relative w-full sm:w-72">
+                        <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ürün, marka veya kategori ara..." 
+                               class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                        <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
+                    </div>
+                    <button onclick="toggleModal(true)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap">
+                        <span>➕</span> Yeni Ürün & Görsel Ekle
+                    </button>
+                </div>
             </div>
-        </div>
 
-        <!-- Tablo -->
-        <div class="overflow-x-auto rounded-lg border border-slate-200">
-            <table class="w-full text-left border-collapse">
-                <thead>
-                    <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
-                        <th class="p-3.5">ID</th>
-                        <th class="p-3.5">Görsel</th>
-                        <th class="p-3.5">Ürün Adı & Açıklama</th>
-                        <th class="p-3.5">Kaynak Platform</th>
-                        <th class="p-3.5">Kategori</th>
-                        <th class="p-3.5">Fiyat</th>
-                        <th class="p-3.5">Stok</th>
-                        <th class="p-3.5">Durum</th>
-                        <th class="p-3.5 text-center">İşlemler</th>
-                    </tr>
-                </thead>
-                <tbody id="productTable" class="divide-y divide-slate-200 text-sm">
-                    <!-- JavaScript ile dinamik dolacak -->
-                </tbody>
-            </table>
-        </div>
+            <!-- Tablo -->
+            <div class="overflow-x-auto rounded-lg border border-slate-200">
+                <table class="w-full text-left border-collapse">
+                    <thead>
+                        <tr class="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                            <th class="p-3.5">ID</th>
+                            <th class="p-3.5">Görsel</th>
+                            <th class="p-3.5">Ürün Adı & Açıklama</th>
+                            <th class="p-3.5">Kaynak Platform</th>
+                            <th class="p-3.5">Kategori</th>
+                            <th class="p-3.5">Fiyat</th>
+                            <th class="p-3.5">Stok</th>
+                            <th class="p-3.5">Durum</th>
+                            <th class="p-3.5 text-center">İşlemler</th>
+                        </tr>
+                    </thead>
+                    <tbody id="productTable" class="divide-y divide-slate-200 text-sm"></tbody>
+                </table>
+            </div>
 
-        <!-- Altbilgi & Sayfalama -->
-        <div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
-            <span id="pageInfo" class="text-sm text-slate-600 font-medium">Veriler yükleniyor...</span>
-            <div class="flex space-x-2">
-                <button onclick="changePage(-1)" id="prevBtn" class="px-4 py-2 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Önceki</button>
-                <button onclick="changePage(1)" id="nextBtn" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Sonraki</button>
+            <!-- Sayfalama -->
+            <div class="flex flex-col sm:flex-row justify-between items-center mt-6 gap-4">
+                <span id="pageInfo" class="text-sm text-slate-600 font-medium">Veriler yükleniyor...</span>
+                <div class="flex space-x-2">
+                    <button onclick="changePage(-1)" id="prevBtn" class="px-4 py-2 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Önceki</button>
+                    <button onclick="changePage(1)" id="nextBtn" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Sonraki</button>
+                </div>
             </div>
         </div>
     </div>
 
-    <!-- MODAL: YENİ ÜRÜN EKLEME PENCERESİ -->
+    <!-- TAB 2: SWAGGER GÖMÜLÜ IFRAME -->
+    <div id="swaggerTab" class="tab-content flex-1 p-4">
+        <div class="max-w-7xl mx-auto h-[85vh] bg-white rounded-xl overflow-hidden shadow-lg border border-slate-700">
+            <iframe src="/swagger/index.html" class="w-full h-full border-0"></iframe>
+        </div>
+    </div>
+
+    <!-- TAB 3: RABBITMQ GÖMÜLÜ IFRAME -->
+    <div id="rabbitTab" class="tab-content flex-1 p-4">
+        <div class="max-w-7xl mx-auto h-[85vh] bg-slate-950 rounded-xl overflow-hidden shadow-lg border border-slate-700 flex flex-col">
+            <div class="bg-slate-900 px-4 py-2 text-xs text-slate-400 border-b border-slate-800 flex justify-between items-center">
+                <span>RabbitMQ Giriş Bilgileri: <b>guest / guest</b></span>
+                <a href="http://localhost:15672" target="_blank" class="text-blue-400 hover:underline">Tam Ekranda Aç <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a>
+            </div>
+            <iframe src="http://localhost:15672" class="w-full flex-1 border-0 bg-white"></iframe>
+        </div>
+    </div>
+
+    <!-- TAB 4: QDRANT GÖMÜLÜ IFRAME -->
+    <div id="qdrantTab" class="tab-content flex-1 p-4">
+        <div class="max-w-7xl mx-auto h-[85vh] bg-slate-950 rounded-xl overflow-hidden shadow-lg border border-slate-700 flex flex-col">
+            <div class="bg-slate-900 px-4 py-2 text-xs text-slate-400 border-b border-slate-800 flex justify-between items-center">
+                <span>Qdrant Vektör Koleksiyonları & Dashboard</span>
+                <a href="http://localhost:6333/dashboard" target="_blank" class="text-red-400 hover:underline">Tam Ekranda Aç <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a>
+            </div>
+            <iframe src="http://localhost:6333/dashboard" class="w-full flex-1 border-0 bg-slate-900"></iframe>
+        </div>
+    </div>
+
+    <!-- MODAL: YENİ ÜRÜN EKLEME -->
     <div id="productModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-6 relative">
+        <div class="bg-white text-slate-800 rounded-xl shadow-2xl border border-slate-200 w-full max-w-md p-6 relative">
             <button onclick="toggleModal(false)" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
             <h2 class="text-xl font-bold text-slate-800 mb-4 border-b pb-2">📦 Yeni Ürün & Görsel Ekle</h2>
             
@@ -99,18 +169,16 @@
         </div>
     </div>
 
-    <!-- MODAL: ÜRÜN TAVSİYELERİ PENCERESİ -->
+    <!-- MODAL: ÜRÜN TAVSİYELERİ -->
     <div id="recommendationModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
-        <div class="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 relative max-h-[90vh] flex flex-col">
+        <div class="bg-white text-slate-800 rounded-xl shadow-2xl border border-slate-200 w-full max-w-2xl p-6 relative max-h-[90vh] flex flex-col">
             <button onclick="toggleRecommendationModal(false)" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
             <div class="mb-4 border-b pb-3 pr-8">
                 <h2 id="recModalTitle" class="text-xl font-bold text-slate-800">💡 Yapay Zeka Ürün Tavsiyeleri</h2>
                 <p id="recModalSubtitle" class="text-xs text-slate-500 mt-0.5">Seçilen ürün için eşleşen alternatifler ve popüler yedekler</p>
             </div>
             
-            <div id="recModalBody" class="overflow-y-auto space-y-3 flex-1 pr-1">
-                <!-- JavaScript ile öneriler buraya dolacak -->
-            </div>
+            <div id="recModalBody" class="overflow-y-auto space-y-3 flex-1 pr-1"></div>
 
             <div class="mt-4 pt-3 border-t flex justify-end">
                 <button onclick="toggleRecommendationModal(false)" class="px-4 py-2 bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg hover:bg-slate-300">Kapat</button>
@@ -123,6 +191,21 @@
         let currentPage = 1;
         let totalPages = 1;
         let searchTimeout = null;
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('bg-blue-600', 'text-white');
+                btn.classList.add('text-slate-400');
+            });
+
+            document.getElementById(tabId).classList.add('active');
+            const activeBtn = document.getElementById(`btn-${tabId}`);
+            if (activeBtn) {
+                activeBtn.classList.remove('text-slate-400');
+                activeBtn.classList.add('bg-blue-600', 'text-white');
+            }
+        }
 
         function toggleModal(show) {
             const modal = document.getElementById('productModal');
@@ -146,7 +229,6 @@
             try {
                 const response = await fetch(`${API_BASE}/products/${productId}/recommendations`);
                 const data = await response.json();
-
                 bodyContainer.innerHTML = '';
 
                 if (!data.success || !data.recommendations || data.recommendations.length === 0) {
@@ -173,7 +255,6 @@
                         </div>
                     `;
                 });
-
             } catch (err) {
                 bodyContainer.innerHTML = `<div class="text-center py-8 text-red-500 text-xs font-semibold">❌ Tavsiyeler yüklenirken hata oluştu: ${err.message}</div>`;
             }
@@ -205,18 +286,6 @@
             if (dbCategory && dbCategory !== 'Genel' && dbCategory !== '' && dbCategory !== 'Diğer') {
                 category = dbCategory;
                 categoryClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold';
-            } else {
-                const lower = name.toLowerCase();
-                if (lower.includes('macbook') || lower.includes('bilgisayar') || lower.includes('telefon')) {
-                    category = 'Elektronik & Teknoloji';
-                    categoryClass = 'bg-indigo-50 text-indigo-700 border border-indigo-100';
-                } else if (lower.includes('kalem') || lower.includes('faber') || lower.includes('grip') || lower.includes('versatil') || lower.includes('silgi')) {
-                    category = 'Kırtasiye & Ofis';
-                    categoryClass = 'bg-yellow-50 text-yellow-800 border border-yellow-100';
-                } else if (lower.includes('halı yıkama') || lower.includes('sinbo') || lower.includes('makin')) {
-                    category = 'Ev & Küçük Aletleri';
-                    categoryClass = 'bg-purple-50 text-purple-700 border border-purple-100';
-                }
             }
 
             return { cleanName: name, platform, platformClass, category, categoryClass };
@@ -244,9 +313,7 @@
                 const description = p.description || p.Description || '';
                 const isAICataloged = p.ai_cataloged || p.AICataloged || p.aiCataloged;
                 const imgPath = p.image_url || p.ImageURL || '';
-
                 const imgUrl = imgPath ? `http://localhost:8080${imgPath}` : 'https://via.placeholder.com/50?text=Görsel';
-
                 const details = parseProductDetails(prodName, dbCategory);
                 
                 let stockBadge = prodStock < 50 
@@ -267,16 +334,8 @@
                             <div class="font-semibold text-slate-800 truncate" title="${details.cleanName}">${details.cleanName}</div>
                             ${description ? `<div class="text-xs text-slate-500 truncate mt-0.5" title="${description}">${description}</div>` : ''}
                         </td>
-                        <td class="p-3.5">
-                            <span class="px-2.5 py-1 rounded-md text-xs font-semibold border ${details.platformClass}">
-                                ${details.platform}
-                            </span>
-                        </td>
-                        <td class="p-3.5">
-                            <span class="px-2.5 py-1 rounded-md text-xs font-medium ${details.categoryClass}">
-                                ${details.category}
-                            </span>
-                        </td>
+                        <td class="p-3.5"><span class="px-2.5 py-1 rounded-md text-xs font-semibold border ${details.platformClass}">${details.platform}</span></td>
+                        <td class="p-3.5"><span class="px-2.5 py-1 rounded-md text-xs font-medium ${details.categoryClass}">${details.category}</span></td>
                         <td class="p-3.5 font-medium text-slate-700">₺${prodPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
                         <td class="p-3.5 font-semibold text-slate-700">${prodStock.toLocaleString('tr-TR')}</td>
                         <td class="p-3.5">${stockBadge}</td>
@@ -302,7 +361,6 @@
             e.preventDefault();
             const btn = document.getElementById('modalSubmitBtn');
             const status = document.getElementById('modalStatus');
-            
             btn.disabled = true;
             status.style.color = '#2563eb';
             status.innerText = '1/2: Ürün veritabanına ekleniyor...';
@@ -322,11 +380,9 @@
 
                 const newProduct = await prodRes.json();
                 const productId = newProduct.ID || newProduct.id || (newProduct.data ? newProduct.data.ID || newProduct.data.id : null);
-
                 if (!productId) throw new Error('Ürün oluşturulamadı.');
 
                 status.innerText = '2/2: Görsel yükleniyor ve AI tetikleniyor...';
-
                 const formData = new FormData();
                 formData.append('image', document.getElementById('modalImage').files[0]);
 
@@ -338,15 +394,12 @@
                 if (!imgRes.ok) throw new Error('Görsel yüklenemedi.');
 
                 status.style.color = '#059669';
-                status.innerText = '✅ Başarılı! Yapay zeka resmi arka planda inceliyor...';
+                status.innerText = '✅ Başarılı! Yapay zeka resmi inceliyor...';
 
                 document.getElementById('modalForm').reset();
                 setTimeout(() => toggleModal(false), 1500);
-
                 setTimeout(fetchProducts, 1000);
                 setTimeout(fetchProducts, 4000);
-                setTimeout(fetchProducts, 7000);
-
             } catch (err) {
                 status.style.color = '#dc2626';
                 status.innerText = '❌ Hata: ' + err.message;
