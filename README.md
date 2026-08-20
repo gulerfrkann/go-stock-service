@@ -1,66 +1,69 @@
-# Go Stock Service & Recommendation Engine
+# Distributed Stock Management & Vector Recommendation Engine
 
-Go (Golang) ve Fiber framework kullanılarak geliştirilmiş, PostgreSQL ile veri kalıcılığı sağlayan, Redis ile Cache-Aside Pattern ve NLP bazlı tavsiye önbelleklemesi sunan, Docker Compose mimarisi üzerinde izole çalışan yüksek performanslı stok yönetimi ve ürün tavsiye mikroservisidir.
-
----
-
-## Mimari ve Teknolojiler
-
-- **Backend:** Go (Golang) 1.22+
-- **Web Framework:** Fiber v2
-- **ORM:** GORM (PostgreSQL Driver)
-- **Veritabanı:** PostgreSQL 15
-- **Önbellek & Vektör Önbellekleme:** Redis 7
-- **Makine Öğrenmesi & NLP:** Python 3.10+, Scikit-learn (TF-IDF Vectorization, Cosine Similarity), Pandas
-- **Konteynerizasyon:** Docker & Docker Compose
-- **Dokümantasyon:** Swagger UI (OpenAPI 3.0)
-- **Test & Sürekli Entegrasyon:** Testify, Miniredis, GitHub Actions (CI/CD)
+Yüksek eşzamanlılık (high concurrency), veri tutarlılığı ve asenkron olay yönetimi odaklı geliştirilmiş; Go, Redis, RabbitMQ, PostgreSQL ve Qdrant tabanlı dağıtık stok yönetimi ve vektör arama mikroservisidir.
 
 ---
 
-## Sistem Özellikleri ve Tasarım Desenleri
+## Mimari Bileşenler ve Teknoloji Yığını
 
-### 1. Katmanlı Mimari (Clean Architecture)
-Proje; Handler, Service, Repository, Model ve Config katmanlarına ayrılarak SOLID prensiplerine uygun, genişletilebilir ve test edilebilir bir yapıda tasarlanmıştır.
-
-### 2. Önbellek Stratejisi (Cache-Aside Pattern)
-- **Cache Hit:** Ürün listeleme istekleri (`GET /api/v1/products`) doğrudan Redis önbelleğinden milisaniyeler seviyesinde sunulur.
-- **Cache Miss:** Önbellekte veri bulunamadığında sorgu PostgreSQL'e iletilir ve sonuç belirlenen TTL (10 dakika) süresiyle Redis'e yazılır.
-- **Cache Invalidation:** Yeni ürün eklendiğinde (`POST /api/v1/products`) veya stok düşürüldüğünde (`POST /api/v1/products/reduce-stock`) Redis önbelleği otomatik olarak temizlenir.
-
-### 3. Kategori Bazlı NLP Tavsiye Motoru
-- **ETL ve Veri Hijyeni:** Ham ERP veri setlerindeki muhasebe, iskonto, kampanya farkı ve kargo gibi ticari olmayan fatura kalemleri filtreleme katmanında ayıklanır.
-- **İzole TF-IDF Hesaplaması:** Ürünler kategorilerine göre gruplandırılarak metin benzerlikleri (TF-IDF & Cosine Similarity) kategori içinde izole hesaplanır. Bu sayede bellek tüketimi optimize edilir ve farklı kategoriler arasındaki anlamsal sapmalar engellenir.
-- **Hibrit Fallback Mekanizması:** Tavsiye isteklerinde (`GET /api/v1/products/:id/recommendations`) sistem sırasıyla:
-  1. Redis üzerindeki önceden hesaplanmış NLP matrisine bakar (O(1) erişim hızı).
-  2. Önbellekte bulunmayan yeni ürünler için Go servis katmanında kategori bazlı güvenli arama fallback'ini devreye sokarak cevapsız istek kalmamasını sağlar.
-
----
-
-## API Uç Noktaları
-
-| Metot | Uç Nokta | Açıklama |
+| Katman | Teknoloji | Kullanım Amacı |
 |---|---|---|
-| GET | `/api/v1/products` | Sayfalanmış ürün listesini döner (Redis Cache) |
-| GET | `/api/v1/products/:id` | Belirtilen ürünün detayını döner |
-| POST | `/api/v1/products` | Yeni ürün kaydı oluşturur (Cache Invalidation) |
-| POST | `/api/v1/products/reduce-stock` | Belirtilen ürünün stoğunu düşürür |
-| GET | `/api/v1/products/:id/recommendations` | Ürüne ait yapay zeka/kategori bazlı alternatifleri listeler |
-| GET | `/swagger/*` | Canlı Swagger API dokümantasyonu |
+| **Backend Core** | Go (Golang) 1.22+ / Fiber v2 | Yüksek verimli HTTP API ve mikroservis çekirdeği |
+| **Veritabanı (RDBMS)** | PostgreSQL 15 / GORM | Ürün ve Outbox olay kayıtları için ACID veri kalıcılığı |
+| **Önbellek & Eşzamanlılık** | Redis 7 | Cache-Aside stratejisi ve Lua script tabanlı atomik stok işlemleri |
+| **Mesaj Kuyruğu (Broker)** | RabbitMQ 3 (Topic Exchange) | Asenkron olay dağıtımı ve worker iletişimi |
+| **Hata İzolasyonu** | DLX / Dead Letter Queue (DLQ) | Poison message yönetimi ve tüketici hata toleransı (resilience) |
+| **Vektörel Veritabanı** | Qdrant | Dense vector indeksleme ve semantik ürün tavsiye motoru |
+| **Yapay Zeka Entegrasyonu** | Google Gemini API / Python (Scikit-Learn) | Metin embedding çıkarma ve hibrit NLP modelleme |
+| **Bildirim Servisi** | Go `net/smtp` / Mailtrap | Asenkron kritik stok e-posta bildirim hattı |
+| **Konteynerizasyon** | Docker & Docker Compose | İzole çoklu servis orkestrasyonu |
+| **API Dokümantasyonu** | Swagger / OpenAPI 3.0 | İnteraktif API sözleşmesi ve test arayüzü |
 
 ---
 
-## Kurulum ve Çalıştırma
+## Temel Mimari Desenler ve İş Mantığı
 
-### Gereksinimler
-- Docker & Docker Compose
-- Python 3.10+ (Veri aktarımı ve ML pipeline çalıştırmak için)
+### 1. Transactional Outbox Pattern
+Veritabanı güncellemesi ile mesaj kuyruğuna yazma arasındaki **dual-write** tutarsızlığını ortadan kaldırmak için kullanılır.
+- Stok rezervasyon işlemi esnasında ürün durumu ve fırlatılacak olay kaydı (`outbox_events`) PostgreSQL üzerinde tek bir **ACID Transaction** içinde commit edilir.
+- Arka planda çalışan bağımsız `Outbox Worker`, işlenmemiş olayları periyodik olarak okur, RabbitMQ `stock_events` topic exchange'ine güvenli şekilde iletir ve durumu `PROCESSED` olarak işaretler.
 
-### 1. Servisleri Başlatma
+### 2. Redis Lua Scripting ile Atomik Stok Yönetimi
+Eşzamanlı (concurrent) gelen yoğun isteklerde **race condition** ve **over-selling** (stoktan fazla satma) açıklarını engellemek için stok kontrol ve düşüm adımları Redis üzerinde atomik Lua scriptleri aracılığıyla işletilir.
 
-Repoyu klonlayıp Docker Compose ile PostgreSQL, Redis ve Go mikroservisini ayağa kaldırın:
+### 3. Dead Letter Queue (DLQ) ve Hata Toleransı
+- RabbitMQ tüketim hattında `autoAck: false` politikası uygulanır.
+- Formatı bozuk veya iş mantığı kurallarını ihlal eden (poison) mesajlar ana kuyruğu kilitlememesi için `Nack(false, false)` ile doğrudan `stock_events.dlx` exchange'i üzerinden `critical_stock_dlq` kuyruğuna yönlendirilir ve izole edilir.
 
-```bash
-git clone [https://github.com/gulerfrkann/go-stock-service.git](https://github.com/gulerfrkann/go-stock-service.git)
-cd go-stock-service
-docker-compose up -d
+### 4. Asenkron Kritik Stok E-Posta Bildirimi
+Ürün stoğu belirlenen kritik eşiğin altına düştüğünde ($\le 3$), `stock.critical_alert` yönlendirme anahtarıyla fırlatılan olay, `Stock Consumer` tarafından tüketilir ve depo sorumlularına Mailtrap/SMTP üzerinden HTML formatlı acil tedarik e-postası iletilir.
+
+### 5. Semantik Arama ve Vektör Tabanlı Tavsiye (Qdrant & NLP)
+- **Dense Vector Search:** Ürün başlık ve açıklamaları embedding vektörlerine dönüştürülerek Qdrant üzerinde kosinüs benzerliği (Cosine Similarity) ile taranır.
+- **İki Kademeli Fallback:** İstek geldiğinde sistem sırasıyla Redis NLP matrisine bakar; bulunamadığı durumlarda Qdrant vektör aramasını devreye sokarak yüksek doğruluklu alternatif ürün listesi üretir.
+
+---
+
+## Mimari Akış Şeması
+
+```mermaid
+flowchart TD
+    Client([HTTP İstemcisi]) -->|POST /reserve-stock| API[Go / Fiber API]
+    
+    subgraph ACID Transaction
+        API -->|1. Atomik Rezervasyon| DB[(PostgreSQL)]
+        API -->|2. Event Kaydı| Outbox[(outbox_events Tablosu)]
+    end
+
+    Outbox -->|Periyodik Tarama| Worker[Outbox Worker]
+    Worker -->|Publish: stock.critical_alert| RMQ{RabbitMQ Topic Exchange}
+
+    RMQ -->|Mesaj Dağıtımı| MainQueue[critical_stock_queue]
+    MainQueue -->|Consume| Consumer[Stock Consumer]
+
+    Consumer -->|Geçerli Mesaj: Ack| Mailer[SMTP / Mailtrap Bildirimi]
+    Consumer -->|Hatalı / Zehirli Mesaj: Nack| DLX{Dead Letter Exchange}
+    DLX --> DLQ[critical_stock_dlq]
+
+    API -->|GET /recommendations| Redis[(Redis Cache)]
+    Redis -.->|Cache Miss| Qdrant[(Qdrant Vector DB)]
