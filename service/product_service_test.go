@@ -2,6 +2,9 @@ package service
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"testing"
 
 	"stok-servisi/models"
@@ -106,4 +109,103 @@ func TestReduceStock_Success(t *testing.T) {
 
 	assert.NoError(t, err)
 	assert.Equal(t, int64(7), newStock)
+}
+
+// --- TEST 3: Tavsiye Motoru - Redis Cache Hit Senaryosu ---
+func TestGetRecommendations_CacheHit(t *testing.T) {
+	mr, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	mockRepo := new(MockProductRepository)
+	productService := NewProductService(mockRepo, rdb)
+
+	targetID := uint(10)
+	expectedRecs := []models.RecommendationResponse{
+		{
+			ProductID: 20,
+			Name:      "Dell 30 Led Monitör",
+			Category:  "Elektronik",
+			Score:     0.95,
+			Reason:    "Yapay Zeka (Kategori İçi NLP) Benzerliği",
+		},
+	}
+
+	// Redis'e veri yazılır
+	dataBytes, _ := json.Marshal(expectedRecs)
+	redisKey := fmt.Sprintf("recommendations:product:%d", targetID)
+	err = mr.Set(redisKey, string(dataBytes))
+	assert.NoError(t, err)
+
+	recs, err := productService.GetRecommendations(context.Background(), targetID)
+
+	assert.NoError(t, err)
+	assert.Len(t, recs, 1)
+	assert.Equal(t, "Dell 30 Led Monitör", recs[0].Name)
+	assert.Equal(t, 0.95, recs[0].Score)
+
+	// Redis'te veri olduğu için DB sorgusu yapılmamalıdır
+	mockRepo.AssertNotCalled(t, "GetByID", mock.Anything)
+	mockRepo.AssertNotCalled(t, "GetProducts", mock.Anything, mock.Anything, mock.Anything)
+}
+
+// --- TEST 4: Tavsiye Motoru - Cache Miss & Go Fallback Senaryosu ---
+func TestGetRecommendations_CacheMiss_Fallback(t *testing.T) {
+	mr, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	mockRepo := new(MockProductRepository)
+	productService := NewProductService(mockRepo, rdb)
+
+	targetProduct := &models.Product{
+		Name:     "Asus Zenbook 14X",
+		Category: "Elektronik",
+	}
+	targetProduct.ID = 1
+
+	categoryProducts := []models.Product{
+		{Name: "Asus Zenbook 14X", Category: "Elektronik"},
+		{Name: "Dell XPS 13", Category: "Elektronik"},
+		{Name: "Lenovo ThinkPad", Category: "Elektronik"},
+		{Name: "Roman Kitabı", Category: "Kitap"}, // Farklı kategori elenmeli
+	}
+	categoryProducts[0].ID = 1
+	categoryProducts[1].ID = 2
+	categoryProducts[2].ID = 3
+	categoryProducts[3].ID = 4
+
+	mockRepo.On("GetByID", uint(1)).Return(targetProduct, nil)
+	mockRepo.On("GetProducts", 1, 50, "").Return(categoryProducts, int64(4), nil)
+
+	recs, err := productService.GetRecommendations(context.Background(), 1)
+
+	assert.NoError(t, err)
+	assert.Len(t, recs, 2) // Kendisi ve kitap filtrelenir, sadece 2 elektronik ürün döner
+	assert.Equal(t, uint(2), recs[0].ProductID)
+	assert.Equal(t, uint(3), recs[1].ProductID)
+	assert.Equal(t, "Aynı Kategori İçi Benzer Ürün", recs[0].Reason)
+	mockRepo.AssertExpectations(t)
+}
+
+// --- TEST 5: Tavsiye Motoru - Ürün Bulunamadı Senaryosu ---
+func TestGetRecommendations_ProductNotFound(t *testing.T) {
+	mr, err := miniredis.Run()
+	assert.NoError(t, err)
+	defer mr.Close()
+
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	mockRepo := new(MockProductRepository)
+	productService := NewProductService(mockRepo, rdb)
+
+	mockRepo.On("GetByID", uint(999)).Return(nil, errors.New("product not found"))
+
+	recs, err := productService.GetRecommendations(context.Background(), 999)
+
+	assert.Error(t, err)
+	assert.Nil(t, recs)
+	assert.Equal(t, "product not found", err.Error())
+	mockRepo.AssertExpectations(t)
 }
