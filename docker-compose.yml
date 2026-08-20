@@ -13,12 +13,21 @@ services:
       interval: 2s
       timeout: 5s
       retries: 5
+    networks:
+      - stok-network
 
   redis:
     image: redis:alpine
     container_name: redis-cache
     ports:
       - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stok-network
 
   rabbitmq:
     image: rabbitmq:3-management-alpine
@@ -26,6 +35,16 @@ services:
     ports:
       - "5672:5672"
       - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - stok-network
 
   qdrant:
     image: qdrant/qdrant:latest
@@ -35,6 +54,8 @@ services:
     volumes:
       - ./qdrant_docker_db:/qdrant/storage
     restart: always
+    networks:
+      - stok-network
 
   stock-api:
     build: .
@@ -50,13 +71,25 @@ services:
       - DB_NAME=stok_db
       - REDIS_ADDR=redis-cache:6379
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
-      - GEMINI_API_KEY=${GEMINI_API_KEY}   # <-- Burası .env dosyasından okuyacak şekilde güncellendi
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      # SMTP E-Posta Bildirim Yapılandırması
+      - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
+      - SMTP_PORT=${SMTP_PORT:-587}
+      - SMTP_USER=${SMTP_USER}
+      - SMTP_PASS=${SMTP_PASS}
+      - ALERT_RECEIVER_EMAIL=${ALERT_RECEIVER_EMAIL}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       rabbitmq:
-        condition: service_started
+        condition: service_healthy
       qdrant:
         condition: service_started
+    networks:
+      - stok-network
+
+networks:
+  stok-network:
+    driver: bridge

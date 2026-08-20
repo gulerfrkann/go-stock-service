@@ -6,6 +6,7 @@ import (
 	"stok-servisi/models"
 
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type ProductRepository interface {
@@ -65,15 +66,16 @@ func (r *productRepository) UpdateStock(productID uint, newStock int) error {
 	return r.db.Model(&models.Product{}).Where("id = ?", productID).Update("stock", newStock).Error
 }
 
+// Eşzamanlı (Concurrent) yarış durumlarına karşı FOR UPDATE (Pessimistic Locking) ile stok düşümü
 func (r *productRepository) ReserveStock(productID uint, quantity int) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var product models.Product
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&product, productID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&product, productID).Error; err != nil {
 			return err
 		}
 
 		if product.Stock < quantity {
-			return errors.New("yetersiz stok")
+			return errors.New("yetersiz stok! işlem reddedildi")
 		}
 
 		product.Stock -= quantity
@@ -85,12 +87,12 @@ func (r *productRepository) ReserveStock(productID uint, quantity int) error {
 func (r *productRepository) ReserveStockWithOutbox(productID uint, quantity int, event *models.OutboxEvent) error {
 	return r.db.Transaction(func(tx *gorm.DB) error {
 		var product models.Product
-		if err := tx.Set("gorm:query_option", "FOR UPDATE").First(&product, productID).Error; err != nil {
+		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).First(&product, productID).Error; err != nil {
 			return err
 		}
 
 		if product.Stock < quantity {
-			return errors.New("yetersiz stok")
+			return errors.New("yetersiz stok! işlem reddedildi")
 		}
 
 		product.Stock -= quantity
@@ -98,8 +100,13 @@ func (r *productRepository) ReserveStockWithOutbox(productID uint, quantity int,
 			return err
 		}
 
-		if err := tx.Create(event).Error; err != nil {
-			return err
+		if event != nil {
+			if event.Status == "" {
+				event.Status = models.OutboxStatusPending
+			}
+			if err := tx.Create(event).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil
@@ -113,8 +120,13 @@ func (r *productRepository) SaveProductImageWithOutbox(productID uint, imageURL 
 			return err
 		}
 
-		if err := tx.Create(event).Error; err != nil {
-			return err
+		if event != nil {
+			if event.Status == "" {
+				event.Status = models.OutboxStatusPending
+			}
+			if err := tx.Create(event).Error; err != nil {
+				return err
+			}
 		}
 
 		return nil

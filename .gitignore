@@ -19,5 +19,9 @@ __pycache__/
 *.xlsx
 *.parquet
 
-# Qdrant Vektör Veritabanı Lokal Dizini
+# Qdrant Vektör Veritabanı Dizinleri
 qdrant_local_db/
+qdrant_docker_db/
+
+# Test ve Coverage Çıktıları
+coverage/

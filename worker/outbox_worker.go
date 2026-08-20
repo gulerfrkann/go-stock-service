@@ -66,11 +66,22 @@ func (w *OutboxWorker) processPendingEvents(ch *amqp.Channel) {
 	}
 
 	for _, event := range events {
+		// Event tipine göre doğru routing key yönlendirmesi
+		routingKey := "stock.reserved"
+		switch event.EventType {
+		case models.EventTypeCriticalStockAlert:
+			routingKey = "stock.critical_alert"
+		case models.EventTypeImageUploaded:
+			routingKey = "stock.image_uploaded"
+		case models.EventTypeStockReserved:
+			routingKey = "stock.reserved"
+		}
+
 		err := ch.Publish(
-			"stock_events",   // exchange
-			"stock.reserved", // routing key
-			false,            // mandatory
-			false,            // immediate
+			"stock_events", // exchange
+			routingKey,     // routing key
+			false,          // mandatory
+			false,          // immediate
 			amqp.Publishing{
 				ContentType: "application/json",
 				Body:        []byte(event.Payload),
@@ -91,6 +102,7 @@ func (w *OutboxWorker) processPendingEvents(ch *amqp.Channel) {
 		config.Logger.Info("Outbox Olayı RabbitMQ'ya Yayınlandı",
 			zap.Uint("event_id", event.ID),
 			zap.String("event_type", event.EventType),
+			zap.String("routing_key", routingKey),
 			zap.String("aggregate_id", event.AggregateID),
 		)
 	}

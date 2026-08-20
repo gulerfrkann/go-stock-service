@@ -52,6 +52,11 @@ func main() {
 	aiWorker := worker.NewAIWorker(amqpConn, productRepo)
 	aiWorker.Start()
 
+	// 6.1 Stock Consumer (Kritik stok bildirimlerini asenkron yakalar)
+	if err := worker.StartStockConsumer(amqpConn); err != nil {
+		logger.Error("Stock Consumer başlatılamadı", zap.Error(err))
+	}
+
 	app := fiber.New()
 
 	// 7. CORS İzinleri (Tarayıcı / HTML panellerinin API'ye erişebilmesi için)

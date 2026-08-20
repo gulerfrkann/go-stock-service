@@ -14,47 +14,48 @@ import (
 	"stok-servisi/models"
 	"stok-servisi/repository"
 )
+
 // Doğrudan stok düşürme için Lua Script
 var decreaseStockLuaScript = redis.NewScript(`
-    local current_stock = redis.call('GET', KEYS[1])
-    if not current_stock then
-        return -2
-    end
-    if tonumber(current_stock) >= tonumber(ARGV[1]) then
-        return redis.call('DECRBY', KEYS[1], ARGV[1])
-    else
-        return -1
-    end
+	local current_stock = redis.call('GET', KEYS[1])
+	if not current_stock then
+		return -2
+	end
+	if tonumber(current_stock) >= tonumber(ARGV[1]) then
+		return redis.call('DECRBY', KEYS[1], ARGV[1])
+	else
+		return -1
+	end
 `)
 
 // Idempotent Stok Rezervasyonu için Lua Script
 var reserveStockLuaScript = redis.NewScript(`
-    local order_key = KEYS[1]
-    local stock_key = KEYS[2]
-    local amount = tonumber(ARGV[1])
-    local ttl = tonumber(ARGV[2])
+	local order_key = KEYS[1]
+	local stock_key = KEYS[2]
+	local amount = tonumber(ARGV[1])
+	local ttl = tonumber(ARGV[2])
 
-    -- 1. Idempotency Kontrolü: Bu sipariş daha önce rezerve edildi mi?
-    if redis.call('EXISTS', order_key) == 1 then
-        return -1
-    end
+	-- 1. Idempotency Kontrolü: Bu sipariş daha önce rezerve edildi mi?
+	if redis.call('EXISTS', order_key) == 1 then
+		return -1
+	end
 
-    -- 2. Stok Key Kontrolü
-    local current_stock = redis.call('GET', stock_key)
-    if not current_stock then
-        return -2
-    end
+	-- 2. Stok Key Kontrolü
+	local current_stock = redis.call('GET', stock_key)
+	if not current_stock then
+		return -2
+	end
 
-    -- 3. Stok Yeterlilik Kontrolü
-    if tonumber(current_stock) < amount then
-        return -3
-    end
+	-- 3. Stok Yeterlilik Kontrolü
+	if tonumber(current_stock) < amount then
+		return -3
+	end
 
-    -- 4. Stok Düşme ve Order Rezervasyon Key'ini TTL ile Kaydetme
-    local new_stock = redis.call('DECRBY', stock_key, amount)
-    redis.call('SET', order_key, amount, 'EX', ttl)
+	-- 4. Stok Düşme ve Order Rezervasyon Key'ini TTL ile Kaydetme
+	local new_stock = redis.call('DECRBY', stock_key, amount)
+	redis.call('SET', order_key, amount, 'EX', ttl)
 
-    return new_stock
+	return new_stock
 `)
 
 type ProductService interface {
@@ -65,8 +66,6 @@ type ProductService interface {
 	ReduceStock(ctx context.Context, productID uint, quantity int) (int64, error)
 	ReserveStock(ctx context.Context, req models.ReserveStockRequest) (int64, error)
 	UploadProductImage(productID uint, imageURL, imagePath string) error
-	
-	// YENİ EKLENEN TAVSİYE METODU:
 	GetRecommendations(ctx context.Context, id uint) ([]models.RecommendationResponse, error)
 }
 
@@ -224,21 +223,34 @@ func (s *productService) ReserveStock(ctx context.Context, req models.ReserveSto
 		return 0, errors.New("yetersiz stok! rezervasyon başarısız")
 	}
 
+	// Ürün adını consumer payload'ı için al
+	productName := "Ürün"
+	if p, err := s.repo.GetByID(req.ProductID); err == nil && p != nil {
+		productName = p.Name
+	}
+
+	// Kalan stok kritik eşik (<= 3) kontrolü
+	eventType := models.EventTypeStockReserved
+	if result <= 3 {
+		eventType = models.EventTypeCriticalStockAlert
+	}
+
 	// Redis tarafı başarılı; Veritabanı rezervasyonu + Outbox kaydı ekleniyor
 	eventPayload, _ := json.Marshal(map[string]interface{}{
-		"product_id":      req.ProductID,
-		"order_id":        req.OrderID,
-		"reserved_qty":    req.Quantity,
-		"remaining_stock": result,
-		"timestamp":       time.Now(),
+		"product_id":   req.ProductID,
+		"product_name": productName,
+		"order_id":     req.OrderID,
+		"reserved_qty": req.Quantity,
+		"remain_stock": result,
+		"timestamp":    time.Now(),
 	})
 
 	outboxEvent := &models.OutboxEvent{
 		AggregateType: "product",
 		AggregateID:   req.OrderID,
-		EventType:     "StockReserved",
+		EventType:     eventType,
 		Payload:       string(eventPayload),
-		Status:        "PENDING",
+		Status:        models.OutboxStatusPending,
 	}
 
 	err = s.repo.ReserveStockWithOutbox(req.ProductID, req.Quantity, outboxEvent)
@@ -257,6 +269,7 @@ func (s *productService) ReserveStock(ctx context.Context, req models.ReserveSto
 		zap.String("correlation_id", correlationID),
 		zap.Uint("product_id", req.ProductID),
 		zap.String("order_id", req.OrderID),
+		zap.String("event_type", eventType),
 		zap.Int("reserved_quantity", req.Quantity),
 		zap.Int64("remaining_stock", result),
 	)
@@ -280,9 +293,9 @@ func (s *productService) UploadProductImage(productID uint, imageURL, imagePath 
 	outboxEvent := &models.OutboxEvent{
 		AggregateType: "product",
 		AggregateID:   fmt.Sprintf("PROD-IMG-%d", productID),
-		EventType:     "ProductImageUploaded",
+		EventType:     models.EventTypeImageUploaded,
 		Payload:       string(payloadBytes),
-		Status:        "PENDING",
+		Status:        models.OutboxStatusPending,
 	}
 
 	err = s.repo.SaveProductImageWithOutbox(productID, imageURL, outboxEvent)
@@ -302,11 +315,7 @@ func (s *productService) UploadProductImage(productID uint, imageURL, imagePath 
 	return nil
 }
 
-// GetRecommendations, ürün için tavsiyeleri getirir. (Yapay Zeka ve Cold Start stratejisi içerir)
-// GetRecommendations, ürün için tavsiyeleri getirir.
-// GetRecommendations, ürün için yapay zeka (Qdrant) destekli tavsiyeleri getirir.
-// GetRecommendations, Qdrant /points/recommend API'sini doğrudan kullanarak nokta atışı tavsiye getirir.
-// GetRecommendations tavsiye fonksiyonu
+// GetRecommendations, ürün için tavsiyeleri getirir
 func (s *productService) GetRecommendations(ctx context.Context, id uint) ([]models.RecommendationResponse, error) {
 	var recommendations []models.RecommendationResponse
 
@@ -331,7 +340,6 @@ func (s *productService) GetRecommendations(ctx context.Context, id uint) ([]mod
 func (s *productService) getFallbackRecommendations(product *models.Product) ([]models.RecommendationResponse, error) {
 	var recommendations []models.RecommendationResponse
 
-	// Yalnızca aynı kategorideki ürünleri getir (Kategori karışmasını engeller)
 	categoryProducts, _, err := s.repo.GetProducts(1, 50, "")
 	if err == nil {
 		for _, p := range categoryProducts {
