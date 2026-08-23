@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: stok_db
     ports:
       - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d stok_db"]
       interval: 2s
@@ -72,7 +74,6 @@ services:
       - REDIS_ADDR=redis-cache:6379
       - RABBITMQ_URL=amqp://guest:guest@rabbitmq:5672/
       - GEMINI_API_KEY=${GEMINI_API_KEY}
-      # SMTP E-Posta Bildirim Yapılandırması
       - SMTP_HOST=${SMTP_HOST:-smtp.gmail.com}
       - SMTP_PORT=${SMTP_PORT:-587}
       - SMTP_USER=${SMTP_USER}
@@ -89,6 +90,9 @@ services:
         condition: service_started
     networks:
       - stok-network
+
+volumes:
+  postgres_data:
 
 networks:
   stok-network:

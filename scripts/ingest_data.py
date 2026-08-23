@@ -37,7 +37,8 @@ print(f"✅ Toplam ürün sayısı: {len(df_clean):,}")
 print("5/6 - all-MiniLM-L6-v2 modeli ile embedding üretiliyor ve Qdrant'a yükleniyor...")
 model = SentenceTransformer('all-MiniLM-L6-v2')
 
-client = QdrantClient(path="./qdrant_local_db")
+# Docker üzerindeki Qdrant servisine bağlanıyoruz
+client = QdrantClient(url="http://localhost:6333")
 collection_name = "products_embeddings"
 
 if client.collection_exists(collection_name):
@@ -56,6 +57,16 @@ conn_params = {"host": "localhost", "port": "5432", "database": "stok_db", "user
 conn = psycopg2.connect(**conn_params)
 cursor = conn.cursor()
 
+# Tabloları güvenli oluştur ve sıfırla
+cursor.execute("""
+    CREATE TABLE IF NOT EXISTS product_recommendations (
+        id SERIAL PRIMARY KEY,
+        product_id INT,
+        recommended_id INT,
+        score FLOAT,
+        reason TEXT
+    );
+""")
 cursor.execute("TRUNCATE TABLE product_recommendations CASCADE;")
 cursor.execute("TRUNCATE TABLE products RESTART IDENTITY CASCADE;")
 conn.commit()

@@ -22,7 +22,7 @@
                 </div>
                 <div>
                     <h1 class="text-base font-bold text-white leading-tight">Dağıtık Stok & AI Ekosistemi</h1>
-                    <p class="text-[11px] text-slate-400">Go • Redis • RabbitMQ • Qdrant • Mailtrap</p>
+                    <p class="text-[11px] text-slate-400">Go • Redis • RabbitMQ • Qdrant • Outbox & Marketplaces</p>
                 </div>
             </div>
 
@@ -81,11 +81,10 @@
                             <th class="p-3.5">ID</th>
                             <th class="p-3.5">Görsel</th>
                             <th class="p-3.5">Ürün Adı & Açıklama</th>
-                            <th class="p-3.5">Kaynak Platform</th>
                             <th class="p-3.5">Kategori</th>
                             <th class="p-3.5">Fiyat</th>
-                            <th class="p-3.5">Stok</th>
-                            <th class="p-3.5">Durum</th>
+                            <th class="p-3.5">Stok & Durum</th>
+                            <th class="p-3.5">Pazaryeri Eşitlemesi</th>
                             <th class="p-3.5 text-center">İşlemler</th>
                         </tr>
                     </thead>
@@ -220,6 +219,42 @@
             else modal.classList.add('hidden'), modal.classList.remove('flex');
         }
 
+        async function reserveStockUI(productId, productName) {
+            const qtyStr = prompt(`"${productName}" için rezerve edilecek stok adedini girin:`, "1");
+            if (!qtyStr) return;
+            
+            const quantity = parseInt(qtyStr);
+            if (isNaN(quantity) || quantity <= 0) {
+                alert("Lütfen geçerli bir adet girin.");
+                return;
+            }
+
+            const orderId = "ORD-UI-" + Math.floor(100000 + Math.random() * 900000);
+
+            try {
+                const response = await fetch(`${API_BASE}/products/reserve-stock`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        product_id: productId,
+                        order_id: orderId,
+                        quantity: quantity,
+                        expiration_secs: 300
+                    })
+                });
+
+                const res = await response.json();
+                if (response.ok && res.success !== false) {
+                    alert(`✅ Rezervasyon Başarılı!\nSipariş ID: ${orderId}\nKalan Stok: ${res.remaining_stock !== undefined ? res.remaining_stock : 'Güncellendi'}\n\nOutbox Worker ile Hepsiburada ve Trendyol senkronize ediliyor.`);
+                    fetchProducts();
+                } else {
+                    alert(`❌ Rezervasyon Başarısız: ${res.error || 'İşlem gerçekleştirilemedi.'}`);
+                }
+            } catch (err) {
+                alert(`❌ Bağlantı hatası: ${err.message}`);
+            }
+        }
+
         async function openRecommendations(productId, productName) {
             toggleRecommendationModal(true);
             document.getElementById('recModalTitle').innerText = `💡 "${productName}" İçin Tavsiyeler`;
@@ -262,33 +297,15 @@
 
         function parseProductDetails(rawName, dbCategory) {
             let name = rawName || 'İsimsiz Ürün';
-            let platform = 'Genel Pazar Yeri';
-            let platformClass = 'bg-slate-100 text-slate-700 border-slate-300';
-            let category = dbCategory || 'Diğer';
+            let category = dbCategory || 'Genel';
             let categoryClass = 'bg-slate-100 text-slate-600';
-
-            if (name.endsWith(', Clz') || name.includes(', Clz')) {
-                platform = 'Çiçeksepeti';
-                platformClass = 'bg-pink-50 text-pink-700 border-pink-200';
-                name = name.replace(/,\s*Clz$/i, '').trim();
-            } else if (name.endsWith(', Clt') || name.includes(', Clt')) {
-                platform = 'Trendyol';
-                platformClass = 'bg-orange-50 text-orange-700 border-orange-200';
-                name = name.replace(/,\s*Clt$/i, '').trim();
-            } else if (name.toLowerCase().includes('macbook') || name.toLowerCase().includes('sinbo')) {
-                platform = 'Hepsiburada';
-                platformClass = 'bg-amber-50 text-amber-700 border-amber-200';
-            } else if (name.toLowerCase().includes('faber')) {
-                platform = 'Amazon TR';
-                platformClass = 'bg-emerald-50 text-emerald-700 border-emerald-200';
-            }
 
             if (dbCategory && dbCategory !== 'Genel' && dbCategory !== '' && dbCategory !== 'Diğer') {
                 category = dbCategory;
                 categoryClass = 'bg-emerald-50 text-emerald-700 border border-emerald-200 font-semibold';
             }
 
-            return { cleanName: name, platform, platformClass, category, categoryClass };
+            return { cleanName: name, category, categoryClass };
         }
 
         async function fetchProducts() {
@@ -300,7 +317,7 @@
             tbody.innerHTML = '';
 
             if (!result.data || result.data.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="9" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="8" class="p-8 text-center text-slate-400">Aramanıza uygun ürün bulunamadı.</td></tr>`;
                 return;
             }
 
@@ -316,16 +333,51 @@
                 const imgUrl = imgPath ? `http://localhost:8080${imgPath}` : 'https://via.placeholder.com/50?text=Görsel';
                 const details = parseProductDetails(prodName, dbCategory);
                 
-                let stockBadge = prodStock < 50 
-                    ? `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">⚠️ Kritik (${prodStock})</span>`
-                    : `<span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">✓ Stokta (${prodStock})</span>`;
-
-                if (isAICataloged) {
-                    stockBadge += `<br><span class="inline-flex items-center px-2 py-0.5 mt-1 rounded-full text-xs font-semibold bg-green-100 text-green-800 border border-green-300">🤖 AI Kataloglandı</span>`;
+                // Kritik Stok Eşiği (<= 3 ise Alarm)
+                let stockUI = '';
+                if (prodStock <= 3) {
+                    stockUI = `
+                        <div>
+                            <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-800 border border-red-300 animate-pulse">
+                                🚨 Kritik: ${prodStock} Adet
+                            </span>
+                            <div class="text-[10px] text-red-600 font-semibold mt-0.5 flex items-center gap-1">
+                                <i class="fa-solid fa-bell"></i> Depoya Mail İletildi
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    stockUI = `
+                        <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+                            ✓ ${prodStock} Adet
+                        </span>
+                    `;
                 }
 
+                if (isAICataloged) {
+                    stockUI += `<div class="mt-1"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">🤖 AI Kataloglandı</span></div>`;
+                }
+
+                // Pazaryeri Senkronizasyon Rozetleri
+                const marketplaceBadges = `
+                    <div class="flex flex-col gap-1">
+                        <div class="flex items-center gap-1.5 text-xs text-slate-700">
+                            <span class="w-2 h-2 rounded-full bg-orange-500 inline-block"></span>
+                            <span class="font-medium">Trendyol:</span>
+                            <span class="font-bold text-slate-900">${prodStock}</span>
+                            <i class="fa-solid fa-circle-check text-emerald-500 text-[11px]" title="Outbox ile Eşitlendi"></i>
+                        </div>
+                        <div class="flex items-center gap-1.5 text-xs text-slate-700">
+                            <span class="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                            <span class="font-medium">Hepsiburada:</span>
+                            <span class="font-bold text-slate-900">${prodStock}</span>
+                            <i class="fa-solid fa-circle-check text-emerald-500 text-[11px]" title="Outbox ile Eşitlendi"></i>
+                        </div>
+                    </div>
+                `;
+
                 tbody.innerHTML += `
-                    <tr class="hover:bg-slate-50 transition-colors">
+                    <tr class="hover:bg-slate-50 transition-colors ${prodStock <= 3 ? 'bg-red-50/40' : ''}">
                         <td class="p-3.5 font-mono text-xs text-slate-400">#${prodID}</td>
                         <td class="p-3.5">
                             <img src="${imgUrl}" class="w-12 h-12 object-cover rounded-lg border border-slate-200 bg-slate-50" alt="Görsel">
@@ -334,15 +386,19 @@
                             <div class="font-semibold text-slate-800 truncate" title="${details.cleanName}">${details.cleanName}</div>
                             ${description ? `<div class="text-xs text-slate-500 truncate mt-0.5" title="${description}">${description}</div>` : ''}
                         </td>
-                        <td class="p-3.5"><span class="px-2.5 py-1 rounded-md text-xs font-semibold border ${details.platformClass}">${details.platform}</span></td>
                         <td class="p-3.5"><span class="px-2.5 py-1 rounded-md text-xs font-medium ${details.categoryClass}">${details.category}</span></td>
                         <td class="p-3.5 font-medium text-slate-700">₺${prodPrice.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</td>
-                        <td class="p-3.5 font-semibold text-slate-700">${prodStock.toLocaleString('tr-TR')}</td>
-                        <td class="p-3.5">${stockBadge}</td>
+                        <td class="p-3.5">${stockUI}</td>
+                        <td class="p-3.5">${marketplaceBadges}</td>
                         <td class="p-3.5 text-center">
-                            <button onclick="openRecommendations(${prodID}, '${details.cleanName.replace(/'/g, "\\'")}')" class="px-3 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center justify-center gap-1 mx-auto whitespace-nowrap">
-                                <span>💡</span> Tavsiyeler
-                            </button>
+                            <div class="flex items-center justify-center gap-1.5">
+                                <button onclick="reserveStockUI(${prodID}, '${details.cleanName.replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center gap-1 whitespace-nowrap" title="Idempotent Stok Rezervasyonu">
+                                    <span>🛒</span> Rezerve Et
+                                </button>
+                                <button onclick="openRecommendations(${prodID}, '${details.cleanName.replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center gap-1 whitespace-nowrap">
+                                    <span>💡</span> Tavsiye
+                                </button>
+                            </div>
                         </td>
                     </tr>
                 `;

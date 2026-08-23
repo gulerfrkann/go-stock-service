@@ -5,7 +5,9 @@ import (
 	"log"
 	"os"
 
+	"stok-servisi/adapter/marketplace"
 	"stok-servisi/config"
+	"stok-servisi/consumer"
 	"stok-servisi/handlers"
 	"stok-servisi/middleware"
 	"stok-servisi/models"
@@ -48,33 +50,49 @@ func main() {
 	productHandler := handlers.NewProductHandler(productService)
 	healthHandler := handlers.NewHealthHandler(db, rdb)
 
-	// 6. AI Catalog Worker (RabbitMQ'dan resim yükleme olaylarını dinler ve ürünü zenginleştirir)
+	// 6. AI Catalog Worker
 	aiWorker := worker.NewAIWorker(amqpConn, productRepo)
 	aiWorker.Start()
 
-	// 6.1 Stock Consumer (Kritik stok bildirimlerini asenkron yakalar)
+	// 6.1 Stock Consumer (Kritik stok bildirimleri)
 	if err := worker.StartStockConsumer(amqpConn); err != nil {
 		logger.Error("Stock Consumer başlatılamadı", zap.Error(err))
 	}
 
+	// 6.2 Marketplace Sync Consumer (Çoklu Pazaryeri Entegrasyonu)
+	rabbitCh, err := amqpConn.Channel()
+	if err != nil {
+		logger.Fatal("RabbitMQ Channel açılamadı", zap.Error(err))
+	}
+	defer rabbitCh.Close()
+
+	hbAdapter := marketplace.NewHepsiburadaAdapter("hb_live_mock_key_991")
+	tyAdapter := marketplace.NewTrendyolAdapter("ty_supplier_mock_774")
+	syncManager := marketplace.NewSyncManager(hbAdapter, tyAdapter)
+
+	mpConsumer := consumer.NewMarketplaceConsumer(rabbitCh, syncManager)
+	if err := mpConsumer.Start(ctx); err != nil {
+		logger.Error("Marketplace Consumer başlatılamadı", zap.Error(err))
+	}
+
 	app := fiber.New()
 
-	// 7. CORS İzinleri (Tarayıcı / HTML panellerinin API'ye erişebilmesi için)
+	// 7. CORS İzinleri
 	app.Use(cors.New(cors.Config{
 		AllowOrigins: "*",
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
 
-	// Static Dosya Sunumu (HTML panellerini doğrudan sunucudan yayınlamak için)
+	// Static Dosya Sunumu
 	app.Static("/", "./public")
 
-	// 8. Observability Middleware'leri & Prometheus Metrikleri
+	// 8. Observability & Prometheus Metrikleri
 	prometheus := fiberprometheus.New("stok_servisi")
 	prometheus.RegisterAt(app, "/metrics")
 	app.Use(prometheus.Middleware)
 	app.Use(middleware.CorrelationID())
 
-	// 9. Health Check Rotaları (/healthz/live & /healthz/ready)
+	// 9. Health Check Rotaları
 	routes.SetupHealthRoutes(app, healthHandler)
 
 	// 10. API Versiyon Grubu ve Ürün Rotaları
