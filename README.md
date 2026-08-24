@@ -1,6 +1,6 @@
 # Distributed Stock Management & Vector Recommendation Engine
 
-Yüksek eşzamanlılık (high concurrency), veri tutarlılığı ve asenkron olay yönetimi odaklı geliştirilmiş; Go, Redis, RabbitMQ, PostgreSQL ve Qdrant tabanlı dağıtık stok yönetimi ve vektör arama mikroservisidir.
+Yüksek eşzamanlılık (high concurrency), veri tutarlılığı ve asenkron olay yönetimi odaklı geliştirilmiş; Go, Redis, RabbitMQ, PostgreSQL ve Qdrant tabanlı dağıtık çok kanallı stok yönetimi ve vektör arama mikroservisidir.
 
 ---
 
@@ -8,39 +8,42 @@ Yüksek eşzamanlılık (high concurrency), veri tutarlılığı ve asenkron ola
 
 | Katman | Teknoloji | Kullanım Amacı |
 |---|---|---|
-| **Backend Core** | Go (Golang) 1.22+ / Fiber v2 | Yüksek verimli HTTP API ve mikroservis çekirdeği |
-| **Veritabanı (RDBMS)** | PostgreSQL 15 / GORM | Ürün ve Outbox olay kayıtları için ACID veri kalıcılığı |
-| **Önbellek & Eşzamanlılık** | Redis 7 | Cache-Aside stratejisi ve Lua script tabanlı atomik stok işlemleri |
-| **Mesaj Kuyruğu (Broker)** | RabbitMQ 3 (Topic Exchange) | Asenkron olay dağıtımı ve worker iletişimi |
+| **Backend Core** | Go (Golang) 1.22+ / Fiber v2 | Yüksek verimli HTTP API, idempotency kontrolü ve mikroservis çekirdeği |
+| **Veritabanı (RDBMS)** | PostgreSQL 15 / GORM | ~1M ürün kataloğu, GIN indeksli FTS ve Outbox olay kayıtları için ACID kalıcılık |
+| **Önbellek & Eşzamanlılık** | Redis 7 | Cache-Aside stratejisi, TTL tabanlı rezervasyon kilidi ve Lua atomik stok scriptleri |
+| **Mesaj Kuyruğu (Broker)** | RabbitMQ 3 (Topic Exchange) | Asenkron olay dağıtımı, pazaryeri senkronizasyonu ve worker iletişimi |
 | **Hata İzolasyonu** | DLX / Dead Letter Queue (DLQ) | Poison message yönetimi ve tüketici hata toleransı (resilience) |
-| **Vektörel Veritabanı** | Qdrant | Dense vector indeksleme ve semantik ürün tavsiye motoru |
-| **Yapay Zeka Entegrasyonu** | Google Gemini API / Python (Scikit-Learn) | Metin embedding çıkarma ve hibrit NLP modelleme |
-| **Bildirim Servisi** | Go `net/smtp` / Mailtrap | Asenkron kritik stok e-posta bildirim hattı |
-| **Konteynerizasyon** | Docker & Docker Compose | İzole çoklu servis orkestrasyonu |
-| **API Dokümantasyonu** | Swagger / OpenAPI 3.0 | İnteraktif API sözleşmesi ve test arayüzü |
+| **Vektörel Veritabanı** | Qdrant | Dense vector indeksleme (HNSW) ve semantik ürün tavsiye motoru |
+| **Pazaryeri Adaptörleri** | Go Interfaces (Trendyol & HB) | Asenkron çok kanallı stok eşitleme ve simülasyon katmanı |
+| **Doğal Dil İşleme (NLP)** | Python (Scikit-Learn / TF-IDF) | Kategori bazlı izole metin benzerliği ve semantik eşleme matrisi |
+| **Bildirim Servisi** | Go `net/smtp` / Mailtrap | Asenkron kritik stok e-posta bildirim hattı ($\le 3$ eşik alarmı) |
+| **Konteynerizasyon** | Docker & Docker Compose | 5 ana servis için izole orkestrasyon ve kalıcı disk volume yönetimi |
 
 ---
 
 ## Temel Mimari Desenler ve İş Mantığı
 
-### 1. Transactional Outbox Pattern
+### 1. Transactional Outbox Pattern & Çok Kanallı Eşitleme
 Veritabanı güncellemesi ile mesaj kuyruğuna yazma arasındaki **dual-write** tutarsızlığını ortadan kaldırmak için kullanılır.
 - Stok rezervasyon işlemi esnasında ürün durumu ve fırlatılacak olay kaydı (`outbox_events`) PostgreSQL üzerinde tek bir **ACID Transaction** içinde commit edilir.
-- Arka planda çalışan bağımsız `Outbox Worker`, işlenmemiş olayları periyodik olarak okur, RabbitMQ `stock_events` topic exchange'ine güvenli şekilde iletir ve durumu `PROCESSED` olarak işaretler.
+- Arka plandaki `Outbox Worker`, işlenmemiş olayları periyodik olarak okur, RabbitMQ topic exchange'ine iletir ve durumu `PROCESSED` yapar.
+- Tüketici (`Stock Consumer`), gelen mesajı işleyerek **Trendyol** ve **Hepsiburada** adaptörlerine anlık stok eşitleme çağrılarını asenkron dağıtır.
 
-### 2. Redis Lua Scripting ile Atomik Stok Yönetimi
-Eşzamanlı (concurrent) gelen yoğun isteklerde **race condition** ve **over-selling** (stoktan fazla satma) açıklarını engellemek için stok kontrol ve düşüm adımları Redis üzerinde atomik Lua scriptleri aracılığıyla işletilir.
+### 2. Redis Lua Scripting ile Idempotent Atomik Stok Yönetimi
+Eşzamanlı gelen yoğun isteklerde **race condition**, **over-selling** ve mükerrer sipariş açıklarını engellemek için:
+- İşlem öncesinde Redis üzerinde sipariş anahtarı (`order:reserved:{id}`) TTL ile kontrol edilir.
+- Stok düşümü atomik Lua script ile işletilir; bellek kontrolü başarılı olursa PostgreSQL transaction'ı başlatılır.
 
 ### 3. Dead Letter Queue (DLQ) ve Hata Toleransı
 - RabbitMQ tüketim hattında `autoAck: false` politikası uygulanır.
-- Formatı bozuk veya iş mantığı kurallarını ihlal eden (poison) mesajlar ana kuyruğu kilitlememesi için `Nack(false, false)` ile doğrudan `stock_events.dlx` exchange'i üzerinden `critical_stock_dlq` kuyruğuna yönlendirilir ve izole edilir.
+- Formatı bozuk veya iş mantığı kurallarını ihlal eden mesajlar ana kuyruğu kilitlememesi için `Nack(false, false)` ile doğrudan `stock_events.dlx` üzerinden `critical_stock_dlq` kuyruğuna yönlendirilir.
 
 ### 4. Asenkron Kritik Stok E-Posta Bildirimi
-Ürün stoğu belirlenen kritik eşiğin altına düştüğünde ($\le 3$), `stock.critical_alert` yönlendirme anahtarıyla fırlatılan olay, `Stock Consumer` tarafından tüketilir ve depo sorumlularına Mailtrap/SMTP üzerinden HTML formatlı acil tedarik e-postası iletilir.
+Ürün stoğu kritik eşiğin altına düştüğünde ($\le 3$), `stock.critical_alert` yönlendirme anahtarıyla fırlatılan olay tüketilir ve depo sorumlularına Mailtrap/SMTP üzerinden HTML acil tedarik e-postası iletilir.
 
-### 5. Semantik Arama ve Vektör Tabanlı Tavsiye (Qdrant & NLP)
-- **Dense Vector Search:** Ürün başlık ve açıklamaları embedding vektörlerine dönüştürülerek Qdrant üzerinde kosinüs benzerliği (Cosine Similarity) ile taranır.
-- **İki Kademeli Fallback:** İstek geldiğinde sistem sırasıyla Redis NLP matrisine bakar; bulunamadığı durumlarda Qdrant vektör aramasını devreye sokarak yüksek doğruluklu alternatif ürün listesi üretir.
+### 5. Semantik Arama ve Kategori Bazlı NLP Tavsiye Motoru
+- **Kategori İçi İzolasyon:** Monitör arayan kullanıcıya monitör donanımları, kitap arayana kitap önerilmesi için ürünler kategori bazında izole TF-IDF ve kosinüs benzerliği matrisiyle eşleştirilir.
+- **İki Kademeli Fallback:** İstek geldiğinde sistem sırasıyla Redis NLP önbelleğine bakar; bulunamadığı durumlarda Qdrant vektör aramasını devreye sokarak alternatif ürün listesi üretir.
 
 ---
 
@@ -50,20 +53,29 @@ Eşzamanlı (concurrent) gelen yoğun isteklerde **race condition** ve **over-se
 flowchart TD
     Client([HTTP İstemcisi]) -->|POST /reserve-stock| API[Go / Fiber API]
     
-    subgraph ACID Transaction
-        API -->|1. Atomik Rezervasyon| DB[(PostgreSQL)]
-        API -->|2. Event Kaydı| Outbox[(outbox_events Tablosu)]
+    subgraph Core_Engine [Çekirdek İşlem & Outbox]
+        API -->|1. Atomik Lua Script & Idempotency| RedisCache[(Redis Cache)]
+        API -->|2. Pessimistic Lock Stok Düşümü| PG[(PostgreSQL stok_db)]
+        API -->|3. Transactional Event Kaydı| OutboxTable[(outbox_events Tablosu)]
     end
 
-    Outbox -->|Periyodik Tarama| Worker[Outbox Worker]
-    Worker -->|Publish: stock.critical_alert| RMQ{RabbitMQ Topic Exchange}
+    subgraph Async_Pipeline [Asenkron İletim & RabbitMQ]
+        OutboxTable -->|Periyodik Tarama| Worker[Outbox Worker]
+        Worker -->|Publish: stock.reserved / critical_alert| Exchange{RabbitMQ Topic Exchange}
+        Exchange -->|Mesaj Dağıtımı| Queue[stock_sync_queue]
+        Queue -->|Consume| Consumer[Stock Consumer]
+    end
 
-    RMQ -->|Mesaj Dağıtımı| MainQueue[critical_stock_queue]
-    MainQueue -->|Consume| Consumer[Stock Consumer]
+    subgraph Marketplace_Notification [Pazaryeri & Alarm Entegrasyonu]
+        Consumer -->|Geçerli Mesaj: Ack| SyncLogic[Sync Dağıtıcı]
+        SyncLogic -->|Stok Eşitleme| Adapters[Trendyol & Hepsiburada Adaptörleri]
+        SyncLogic -->|Kritik Eşik <= 3| Mail[SMTP / Mailtrap Bildirimi]
+        Consumer -->|Hatalı Mesaj: Nack| DLX{Dead Letter Exchange}
+        DLX --> DLQ[stock_sync_dlq]
+    end
 
-    Consumer -->|Geçerli Mesaj: Ack| Mailer[SMTP / Mailtrap Bildirimi]
-    Consumer -->|Hatalı / Zehirli Mesaj: Nack| DLX{Dead Letter Exchange}
-    DLX --> DLQ[critical_stock_dlq]
-
-    API -->|GET /recommendations| Redis[(Redis Cache)]
-    Redis -.->|Cache Miss| Qdrant[(Qdrant Vector DB)]
+    subgraph Recommendation_Engine [Tavsiye Motoru]
+        Client -->|GET /recommendations| RecAPI[Recommendation API]
+        RecAPI -->|Cache Hit| RedisCache
+        RecAPI -->|Cache Miss / Fallback| NLP[Kategori İçi TF-IDF / Qdrant Vektör DB]
+    end
