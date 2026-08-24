@@ -48,7 +48,7 @@ func (r *productRepository) GetProducts(page, limit int, search string) ([]model
 	}
 
 	offset := (page - 1) * limit
-	err = query.Offset(offset).Limit(limit).Find(&products).Error
+	err = query.Order("id ASC").Offset(offset).Limit(limit).Find(&products).Error
 	return products, total, err
 }
 
