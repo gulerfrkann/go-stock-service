@@ -7,8 +7,8 @@ on:
     branches: [ "main", "master" ]
 
 jobs:
-  test:
-    name: Run Unit Tests
+  build-and-test:
+    name: Build and Run All Tests
     runs-on: ubuntu-latest
 
     steps:
@@ -18,11 +18,14 @@ jobs:
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
-          go-version: '1.22' # veya kullandığın Go sürümü
-          cache: true
+          go-version: '1.22'
+          cache: true # İkinci dosyadaki bu özellik build sürelerini ciddi oranda kısaltır
 
       - name: Install Dependencies
         run: go mod download
 
-      - name: Run Service Unit Tests
-        run: go test ./service/... -v
+      - name: Build Project
+        run: go build -v ./... # Hatalı kod varsa testten önce derleme aşamasında yakalar
+
+      - name: Run All Tests
+        run: go test -v ./... # Sadece service katmanını değil, tüm repoyu test eder
