@@ -20,6 +20,17 @@ func NewProductHandler(service service.ProductService) *ProductHandler {
 	return &ProductHandler{service: service}
 }
 
+// GetProducts Ürünleri Listeleme Endpoint'i
+// @Summary Sayfalanmış ve filtrelenmiş ürün listesini döner
+// @Description Sayfa numarası, limit ve arama parametrelerine göre ürünleri listeler.
+// @Tags Products
+// @Produce json
+// @Param page query int false "Sayfa numarası (Varsayılan: 1)"
+// @Param limit query int false "Sayfa başına ürün sayısı (Varsayılan: 20)"
+// @Param search query string false "Arama kelimesi"
+// @Success 200 {object} map[string]interface{} "Ürün listesi ve sayfalama bilgisi"
+// @Failure 500 {object} map[string]interface{} "Sunucu hatası"
+// @Router /api/products [get]
 func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	page, _ := strconv.Atoi(c.Query("page", "1"))
 	limit, _ := strconv.Atoi(c.Query("limit", "20"))
@@ -48,6 +59,16 @@ func (h *ProductHandler) GetProducts(c *fiber.Ctx) error {
 	})
 }
 
+// GetProductByID ID ile Ürün Getirme Endpoint'i
+// @Summary Belirtilen ID'ye sahip ürün detayını getirir
+// @Description Ürün ID parametresi ile veritabanından ürün bilgilerini çeker.
+// @Tags Products
+// @Produce json
+// @Param id path int true "Ürün ID"
+// @Success 200 {object} map[string]interface{} "Ürün detayı"
+// @Failure 400 {object} map[string]interface{} "Geçersiz ürün ID"
+// @Failure 404 {object} map[string]interface{} "Ürün bulunamadı"
+// @Router /api/products/{id} [get]
 func (h *ProductHandler) GetProductByID(c *fiber.Ctx) error {
 	idParam := c.Params("id")
 	id, err := strconv.ParseUint(idParam, 10, 32)
@@ -66,6 +87,17 @@ func (h *ProductHandler) GetProductByID(c *fiber.Ctx) error {
 	})
 }
 
+// CreateProduct Yeni Ürün Ekleme Endpoint'i
+// @Summary Sisteme yeni ürün kaydeder
+// @Description JSON body ile gelen ürün bilgilerini veritabanına ekler.
+// @Tags Products
+// @Accept json
+// @Produce json
+// @Param request body models.Product true "Ürün Bilgileri"
+// @Success 201 {object} models.Product "Oluşturulan ürün"
+// @Failure 400 {object} map[string]interface{} "Geçersiz istek gövdesi"
+// @Failure 500 {object} map[string]interface{} "Kayıt hatası"
+// @Router /api/products [post]
 func (h *ProductHandler) CreateProduct(c *fiber.Ctx) error {
 	product := new(models.Product)
 	if err := c.BodyParser(product); err != nil {
@@ -83,6 +115,17 @@ type ReduceStockRequest struct {
 	Quantity int `json:"quantity"`
 }
 
+// ReduceStock Doğrudan Stok Düşürme Endpoint'i
+// @Summary Belirtilen ürünün stok miktarını doğrudan düşürür
+// @Description Redis Lua Script kullanarak yarış koşullarını (race conditions) engeller ve stok düşer.
+// @Tags Stock
+// @Accept json
+// @Produce json
+// @Param id path int true "Ürün ID"
+// @Param request body ReduceStockRequest true "Düşülecek miktar"
+// @Success 200 {object} map[string]interface{} "Başarılı stok düşüşü"
+// @Failure 400 {object} map[string]interface{} "Yetersiz stok veya geçersiz istek"
+// @Router /api/products/{id}/reduce-stock [post]
 func (h *ProductHandler) ReduceStock(c *fiber.Ctx) error {
 	idParam := c.Params("id")
 	id, err := strconv.ParseUint(idParam, 10, 32)
@@ -116,6 +159,15 @@ func (h *ProductHandler) ReduceStock(c *fiber.Ctx) error {
 }
 
 // ReserveStock Idempotent Stok Rezervasyon Endpoint'i
+// @Summary Idempotent stok rezervasyonu yapar ve Outbox event tetikler
+// @Description Gelen order_id ile mükerrer kontrolü (idempotency) yaparak stok rezerve eder ve pazar yeri sync için outbox kaydı oluşturur.
+// @Tags Stock
+// @Accept json
+// @Produce json
+// @Param request body models.ReserveStockRequest true "Rezervasyon İstek Parametreleri"
+// @Success 200 {object} map[string]interface{} "Başarılı rezervasyon"
+// @Failure 400 {object} map[string]interface{} "Geçersiz istek, mükerrer işlem veya yetersiz stok"
+// @Router /api/stock/reserve [post]
 func (h *ProductHandler) ReserveStock(c *fiber.Ctx) error {
 	var req models.ReserveStockRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -165,6 +217,17 @@ func (h *ProductHandler) ReserveStock(c *fiber.Ctx) error {
 }
 
 // UploadImage Ürün Görseli Yükleme ve AI Outbox Tetikleme Ucu
+// @Summary Ürüne görsel yükler ve AI Outbox olayı tetikler
+// @Description Multipart form üzerinden yüklenen görseli sunucuya kaydeder ve ProductImageUploaded olayı oluşturur.
+// @Tags Media
+// @Accept multipart/form
+// @Produce json
+// @Param id path int true "Ürün ID"
+// @Param image formData file true "Yüklenecek görsel dosyası"
+// @Success 200 {object} map[string]interface{} "Görsel başarıyla yüklendi"
+// @Failure 400 {object} map[string]interface{} "Geçersiz ID veya eksik dosya"
+// @Failure 500 {object} map[string]interface{} "Kayıt hatası"
+// @Router /api/products/{id}/image [post]
 func (h *ProductHandler) UploadImage(c *fiber.Ctx) error {
 	idParam := c.Params("id")
 	productID, err := strconv.ParseUint(idParam, 10, 32)
@@ -218,7 +281,16 @@ func (h *ProductHandler) UploadImage(c *fiber.Ctx) error {
 		},
 	})
 }
+
 // GetRecommendations Ürün Tavsiyeleri ve Skorlama Ucu (AI & Cold Start Destekli)
+// @Summary Ürüne özel TF-IDF ve benzerlik tavsiyelerini getirir
+// @Description Redis önbelleğinden veya izole kategori benzerlik matrisinden ilgili ürün önerilerini döner.
+// @Tags Recommendations
+// @Produce json
+// @Param id path int true "Ürün ID"
+// @Success 200 {object} map[string]interface{} "Tavsiye listesi"
+// @Failure 404 {object} map[string]interface{} "Ürün bulunamadı"
+// @Router /api/products/{id}/recommendations [get]
 func (h *ProductHandler) GetRecommendations(c *fiber.Ctx) error {
 	idParam := c.Params("id")
 	productID, err := strconv.ParseUint(idParam, 10, 32)

@@ -1,55 +1,68 @@
-basePath: /api/v1
 definitions:
-  gorm.DeletedAt:
-    properties:
-      time:
-        type: string
-      valid:
-        description: Valid is true if Time is not NULL
-        type: boolean
-    type: object
-  models.Product:
-    properties:
-      createdAt:
-        type: string
-      deletedAt:
-        $ref: '#/definitions/gorm.DeletedAt'
-      id:
-        type: integer
-      name:
-        type: string
-      price:
-        type: number
-      stock:
-        type: integer
-      updatedAt:
-        type: string
-    type: object
-  models.ReduceStockRequest:
+  handlers.ReduceStockRequest:
     properties:
       quantity:
         type: integer
     type: object
-host: localhost:8080
+  models.Product:
+    properties:
+      ai_cataloged:
+        type: boolean
+      care_instructions:
+        type: string
+      category:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      image_url:
+        type: string
+      name:
+        type: string
+      price:
+        type: number
+      seo_title:
+        type: string
+      stock:
+        type: integer
+      updated_at:
+        type: string
+    type: object
+  models.ReserveStockRequest:
+    properties:
+      expiration_secs:
+        description: Opsiyonel, gönderilmezse varsayılan süre kullanılır
+        type: integer
+      order_id:
+        type: string
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    required:
+    - order_id
+    - product_id
+    - quantity
+    type: object
 info:
   contact: {}
-  description: Go Fiber ve GORM ile geliştirilmiş stok yönetimi mikroservis API dokümantasyonu.
-  title: Stok Servisi API
-  version: "1.0"
 paths:
-  /products:
+  /api/products:
     get:
-      description: 965k ürün arasında hızlı arama (GIN Trigram) ve sayfalama yapar.
+      description: Sayfa numarası, limit ve arama parametrelerine göre ürünleri listeler.
       parameters:
-      - description: 'Sayfa Numarası (Varsayılan: 1)'
+      - description: 'Sayfa numarası (Varsayılan: 1)'
         in: query
         name: page
         type: integer
-      - description: 'Sayfa Başına Ürün Miktarı (Varsayılan: 20, Maks: 100)'
+      - description: 'Sayfa başına ürün sayısı (Varsayılan: 20)'
         in: query
         name: limit
         type: integer
-      - description: Ürün Adında Arama Terimi
+      - description: Arama kelimesi
         in: query
         name: search
         type: string
@@ -57,27 +70,26 @@ paths:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Ürün listesi ve sayfalama bilgisi
           schema:
             additionalProperties: true
             type: object
         "500":
-          description: Internal Server Error
+          description: Sunucu hatası
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
-      summary: Ürünleri Listele ve Ara
+      summary: Sayfalanmış ve filtrelenmiş ürün listesini döner
       tags:
       - Products
     post:
       consumes:
       - application/json
-      description: Sisteme yeni bir ürün kaydeder ve ilgili Redis önbelleklerini temizler.
+      description: JSON body ile gelen ürün bilgilerini veritabanına ekler.
       parameters:
-      - description: Ürün Bilgisi
+      - description: Ürün Bilgileri
         in: body
-        name: product
+        name: request
         required: true
         schema:
           $ref: '#/definitions/models.Product'
@@ -85,56 +97,177 @@ paths:
       - application/json
       responses:
         "201":
-          description: Created
+          description: Oluşturulan ürün
           schema:
             $ref: '#/definitions/models.Product'
         "400":
-          description: Bad Request
+          description: Geçersiz istek gövdesi
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
         "500":
-          description: Internal Server Error
+          description: Kayıt hatası
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
-      summary: Yeni Ürün Oluştur
+      summary: Sisteme yeni ürün kaydeder
       tags:
       - Products
-  /products/{id}/reduce:
-    post:
-      consumes:
-      - application/json
-      description: Belirtilen ID'li ürünün stoğunu verilen miktar kadar azaltır.
+  /api/products/{id}:
+    get:
+      description: Ürün ID parametresi ile veritabanından ürün bilgilerini çeker.
       parameters:
       - description: Ürün ID
         in: path
         name: id
         required: true
         type: integer
-      - description: Düşülecek Miktar
-        in: body
-        name: body
-        required: true
-        schema:
-          $ref: '#/definitions/models.ReduceStockRequest'
       produces:
       - application/json
       responses:
         "200":
-          description: OK
+          description: Ürün detayı
           schema:
             additionalProperties: true
             type: object
         "400":
-          description: Bad Request
+          description: Geçersiz ürün ID
           schema:
-            additionalProperties:
-              type: string
+            additionalProperties: true
             type: object
-      summary: Stok Düşür
+        "404":
+          description: Ürün bulunamadı
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Belirtilen ID'ye sahip ürün detayını getirir
       tags:
       - Products
+  /api/products/{id}/image:
+    post:
+      consumes:
+      - multipart/form
+      description: Multipart form üzerinden yüklenen görseli sunucuya kaydeder ve
+        ProductImageUploaded olayı oluşturur.
+      parameters:
+      - description: Ürün ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Yüklenecek görsel dosyası
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Görsel başarıyla yüklendi
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Geçersiz ID veya eksik dosya
+          schema:
+            additionalProperties: true
+            type: object
+        "500":
+          description: Kayıt hatası
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Ürüne görsel yükler ve AI Outbox olayı tetikler
+      tags:
+      - Media
+  /api/products/{id}/recommendations:
+    get:
+      description: Redis önbelleğinden veya izole kategori benzerlik matrisinden ilgili
+        ürün önerilerini döner.
+      parameters:
+      - description: Ürün ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Tavsiye listesi
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Ürün bulunamadı
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Ürüne özel TF-IDF ve benzerlik tavsiyelerini getirir
+      tags:
+      - Recommendations
+  /api/products/{id}/reduce-stock:
+    post:
+      consumes:
+      - application/json
+      description: Redis Lua Script kullanarak yarış koşullarını (race conditions)
+        engeller ve stok düşer.
+      parameters:
+      - description: Ürün ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Düşülecek miktar
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/handlers.ReduceStockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Başarılı stok düşüşü
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Yetersiz stok veya geçersiz istek
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Belirtilen ürünün stok miktarını doğrudan düşürür
+      tags:
+      - Stock
+  /api/stock/reserve:
+    post:
+      consumes:
+      - application/json
+      description: Gelen order_id ile mükerrer kontrolü (idempotency) yaparak stok
+        rezerve eder ve pazar yeri sync için outbox kaydı oluşturur.
+      parameters:
+      - description: Rezervasyon İstek Parametreleri
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.ReserveStockRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Başarılı rezervasyon
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Geçersiz istek, mükerrer işlem veya yetersiz stok
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Idempotent stok rezervasyonu yapar ve Outbox event tetikler
+      tags:
+      - Stock
 swagger: "2.0"

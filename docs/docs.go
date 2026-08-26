@@ -15,57 +15,55 @@ const docTemplate = `{
     "host": "{{.Host}}",
     "basePath": "{{.BasePath}}",
     "paths": {
-        "/products": {
+        "/api/products": {
             "get": {
-                "description": "965k ürün arasında hızlı arama (GIN Trigram) ve sayfalama yapar.",
+                "description": "Sayfa numarası, limit ve arama parametrelerine göre ürünleri listeler.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Products"
                 ],
-                "summary": "Ürünleri Listele ve Ara",
+                "summary": "Sayfalanmış ve filtrelenmiş ürün listesini döner",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Sayfa Numarası (Varsayılan: 1)",
+                        "description": "Sayfa numarası (Varsayılan: 1)",
                         "name": "page",
                         "in": "query"
                     },
                     {
                         "type": "integer",
-                        "description": "Sayfa Başına Ürün Miktarı (Varsayılan: 20, Maks: 100)",
+                        "description": "Sayfa başına ürün sayısı (Varsayılan: 20)",
                         "name": "limit",
                         "in": "query"
                     },
                     {
                         "type": "string",
-                        "description": "Ürün Adında Arama Terimi",
+                        "description": "Arama kelimesi",
                         "name": "search",
                         "in": "query"
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Ürün listesi ve sayfalama bilgisi",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Sunucu hatası",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     }
                 }
             },
             "post": {
-                "description": "Sisteme yeni bir ürün kaydeder ve ilgili Redis önbelleklerini temizler.",
+                "description": "JSON body ile gelen ürün bilgilerini veritabanına ekler.",
                 "consumes": [
                     "application/json"
                 ],
@@ -75,11 +73,11 @@ const docTemplate = `{
                 "tags": [
                     "Products"
                 ],
-                "summary": "Yeni Ürün Oluştur",
+                "summary": "Sisteme yeni ürün kaydeder",
                 "parameters": [
                     {
-                        "description": "Ürün Bilgisi",
-                        "name": "product",
+                        "description": "Ürün Bilgileri",
+                        "name": "request",
                         "in": "body",
                         "required": true,
                         "schema": {
@@ -89,45 +87,85 @@ const docTemplate = `{
                 ],
                 "responses": {
                     "201": {
-                        "description": "Created",
+                        "description": "Oluşturulan ürün",
                         "schema": {
                             "$ref": "#/definitions/models.Product"
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Geçersiz istek gövdesi",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     },
                     "500": {
-                        "description": "Internal Server Error",
+                        "description": "Kayıt hatası",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
                         }
                     }
                 }
             }
         },
-        "/products/{id}/reduce": {
-            "post": {
-                "description": "Belirtilen ID'li ürünün stoğunu verilen miktar kadar azaltır.",
-                "consumes": [
-                    "application/json"
-                ],
+        "/api/products/{id}": {
+            "get": {
+                "description": "Ürün ID parametresi ile veritabanından ürün bilgilerini çeker.",
                 "produces": [
                     "application/json"
                 ],
                 "tags": [
                     "Products"
                 ],
-                "summary": "Stok Düşür",
+                "summary": "Belirtilen ID'ye sahip ürün detayını getirir",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Ürün ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Ürün detayı",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Geçersiz ürün ID",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Ürün bulunamadı",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/products/{id}/image": {
+            "post": {
+                "description": "Multipart form üzerinden yüklenen görseli sunucuya kaydeder ve ProductImageUploaded olayı oluşturur.",
+                "consumes": [
+                    "multipart/form"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Media"
+                ],
+                "summary": "Ürüne görsel yükler ve AI Outbox olayı tetikler",
                 "parameters": [
                     {
                         "type": "integer",
@@ -137,30 +175,161 @@ const docTemplate = `{
                         "required": true
                     },
                     {
-                        "description": "Düşülecek Miktar",
-                        "name": "body",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/models.ReduceStockRequest"
-                        }
+                        "type": "file",
+                        "description": "Yüklenecek görsel dosyası",
+                        "name": "image",
+                        "in": "formData",
+                        "required": true
                     }
                 ],
                 "responses": {
                     "200": {
-                        "description": "OK",
+                        "description": "Görsel başarıyla yüklendi",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
                         }
                     },
                     "400": {
-                        "description": "Bad Request",
+                        "description": "Geçersiz ID veya eksik dosya",
                         "schema": {
                             "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
+                            "additionalProperties": true
+                        }
+                    },
+                    "500": {
+                        "description": "Kayıt hatası",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/products/{id}/recommendations": {
+            "get": {
+                "description": "Redis önbelleğinden veya izole kategori benzerlik matrisinden ilgili ürün önerilerini döner.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Recommendations"
+                ],
+                "summary": "Ürüne özel TF-IDF ve benzerlik tavsiyelerini getirir",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Ürün ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Tavsiye listesi",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "404": {
+                        "description": "Ürün bulunamadı",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/products/{id}/reduce-stock": {
+            "post": {
+                "description": "Redis Lua Script kullanarak yarış koşullarını (race conditions) engeller ve stok düşer.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stock"
+                ],
+                "summary": "Belirtilen ürünün stok miktarını doğrudan düşürür",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Ürün ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Düşülecek miktar",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/handlers.ReduceStockRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Başarılı stok düşüşü",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Yetersiz stok veya geçersiz istek",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
+        },
+        "/api/stock/reserve": {
+            "post": {
+                "description": "Gelen order_id ile mükerrer kontrolü (idempotency) yaparak stok rezerve eder ve pazar yeri sync için outbox kaydı oluşturur.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Stock"
+                ],
+                "summary": "Idempotent stok rezervasyonu yapar ve Outbox event tetikler",
+                "parameters": [
+                    {
+                        "description": "Rezervasyon İstek Parametreleri",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.ReserveStockRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Başarılı rezervasyon",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Geçersiz istek, mükerrer işlem veya yetersiz stok",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
                         }
                     }
                 }
@@ -168,29 +337,37 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "gorm.DeletedAt": {
+        "handlers.ReduceStockRequest": {
             "type": "object",
             "properties": {
-                "time": {
-                    "type": "string"
-                },
-                "valid": {
-                    "description": "Valid is true if Time is not NULL",
-                    "type": "boolean"
+                "quantity": {
+                    "type": "integer"
                 }
             }
         },
         "models.Product": {
             "type": "object",
             "properties": {
-                "createdAt": {
+                "ai_cataloged": {
+                    "type": "boolean"
+                },
+                "care_instructions": {
                     "type": "string"
                 },
-                "deletedAt": {
-                    "$ref": "#/definitions/gorm.DeletedAt"
+                "category": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
                 },
                 "id": {
                     "type": "integer"
+                },
+                "image_url": {
+                    "type": "string"
                 },
                 "name": {
                     "type": "string"
@@ -198,17 +375,35 @@ const docTemplate = `{
                 "price": {
                     "type": "number"
                 },
+                "seo_title": {
+                    "type": "string"
+                },
                 "stock": {
                     "type": "integer"
                 },
-                "updatedAt": {
+                "updated_at": {
                     "type": "string"
                 }
             }
         },
-        "models.ReduceStockRequest": {
+        "models.ReserveStockRequest": {
             "type": "object",
+            "required": [
+                "order_id",
+                "product_id",
+                "quantity"
+            ],
             "properties": {
+                "expiration_secs": {
+                    "description": "Opsiyonel, gönderilmezse varsayılan süre kullanılır",
+                    "type": "integer"
+                },
+                "order_id": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
                 "quantity": {
                     "type": "integer"
                 }
@@ -219,12 +414,12 @@ const docTemplate = `{
 
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
-	Version:          "1.0",
-	Host:             "localhost:8080",
-	BasePath:         "/api/v1",
+	Version:          "",
+	Host:             "",
+	BasePath:         "",
 	Schemes:          []string{},
-	Title:            "Stok Servisi API",
-	Description:      "Go Fiber ve GORM ile geliştirilmiş stok yönetimi mikroservis API dokümantasyonu.",
+	Title:            "",
+	Description:      "",
 	InfoInstanceName: "swagger",
 	SwaggerTemplate:  docTemplate,
 	LeftDelim:        "{{",
