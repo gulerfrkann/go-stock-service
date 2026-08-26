@@ -8,6 +8,7 @@ import (
 	"stok-servisi/adapter/marketplace"
 	"stok-servisi/config"
 	"stok-servisi/consumer"
+	_ "stok-servisi/docs" // Swagger dokümantasyon paketi
 	"stok-servisi/handlers"
 	"stok-servisi/middleware"
 	"stok-servisi/models"
@@ -19,6 +20,7 @@ import (
 	"github.com/ansrivas/fiberprometheus/v2"
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
+	"github.com/gofiber/swagger" // Güncel Fiber Swagger paketi
 	"go.uber.org/zap"
 )
 
@@ -75,12 +77,11 @@ func main() {
 		logger.Error("Marketplace Consumer başlatılamadı", zap.Error(err))
 	}
 
-// 6.3 Saga Pattern - Ödeme Hatası Telafi Consumer (YENİ)
+	// 6.3 Saga Pattern - Ödeme Hatası Telafi Consumer
 	paymentFailureConsumer := consumer.NewPaymentFailureConsumer(amqpConn, db)
 	if err := paymentFailureConsumer.Start(ctx); err != nil {
 		logger.Error("Saga Payment Failure Consumer başlatılamadı", zap.Error(err))
 	}
-// ... (Eski kodların devamı)
 
 	app := fiber.New()
 
@@ -90,19 +91,33 @@ func main() {
 		AllowHeaders: "Origin, Content-Type, Accept",
 	}))
 
-	// Static Dosya Sunumu
-	app.Static("/", "./public")
-
 	// 8. Observability & Prometheus Metrikleri
 	prometheus := fiberprometheus.New("stok_servisi")
 	prometheus.RegisterAt(app, "/metrics")
 	app.Use(prometheus.Middleware)
 	app.Use(middleware.CorrelationID())
 
-	// 9. Health Check Rotaları
+	// --- KESİN ÇÖZÜM BAŞLANGICI ---
+	
+	// 9. Önce swagger.json dosyasını doğrudan diskten sunuyoruz (Çakışmayı %100 engeller)
+	app.Get("/swagger.json", func(c *fiber.Ctx) error {
+		return c.SendFile("./docs/swagger.json")
+	})
+
+	// 10. Swagger arayüzünü başlatıp doğrudan üstte sunduğumuz URL'ye bağlıyoruz
+	app.Get("/swagger/*", swagger.New(swagger.Config{
+		URL: "/swagger.json", // UI artık hiçbir yeri aramayacak, direkt bu dosyayı okuyacak
+	}))
+
+	// --- KESİN ÇÖZÜM BİTİŞİ ---
+
+	// 11. Static Dosya Sunumu (Artık swagger'ı ezemez)
+	app.Static("/", "./public")
+
+	// 12. Health Check Rotaları
 	routes.SetupHealthRoutes(app, healthHandler)
 
-	// 10. API Versiyon Grubu ve Ürün Rotaları
+	// 13. API Versiyon Grubu ve Ürün Rotaları
 	api := app.Group("/api/v1")
 	routes.SetupProductRoutes(api, productHandler)
 
@@ -111,6 +126,12 @@ func main() {
 		port = "8080"
 	}
 
-	logger.Info("Sunucu başlatılıyor", zap.String("port", port))
-	log.Fatal(app.Listen(":" + port))
+	// port := os.Getenv("PORT")
+	// if port == "" {
+	// 	port = "8080"
+	// }
+    // BUNLARI SİL VEYA YORUMA AL. YERİNE ŞUNU YAZ:
+    
+	logger.Info("Sunucu başlatılıyor", zap.String("port", "8081"))
+	log.Fatal(app.Listen(":8081"))
 }
