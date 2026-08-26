@@ -10,7 +10,6 @@ print("1/3 - Veritabanından ürünler okunuyor...")
 conn = psycopg2.connect(host="localhost", port="5432", database="stok_db", user="postgres", password="postgres")
 cursor = conn.cursor()
 
-# İlk 50.000 ürünü çek
 cursor.execute("SELECT id, name, category FROM products ORDER BY id ASC LIMIT 50000;")
 rows = cursor.fetchall()
 cursor.close()
@@ -24,9 +23,9 @@ r = redis.Redis(host='localhost', port=6380, db=0)
 pipe = r.pipeline()
 count = 0
 
-# Ürünleri kendi kategorisi içinde grupla (Monitör sadece elektronikle, kitap sadece kitapla eşleşir)
-for category_name, group in tqdm(df.groupby('category'), desc="Kategori İşleme"):
-    if len(group) < 2:
+for category_name, group in df.groupby('category'):
+    # Kategoride tek ürün varsa veya kategori adı boşsa geç
+    if len(group) < 2 or not category_name:
         continue
     
     group = group.reset_index(drop=True)
@@ -48,8 +47,12 @@ for category_name, group in tqdm(df.groupby('category'), desc="Kategori İşleme
             candidate = group.iloc[rel_idx]
             raw_score = float(sim_scores[rel_idx])
             
-            # Gerçek benzerlik skoru hesapla
-            final_score = round(raw_score if raw_score > 0.15 else 0.65, 2)
+            # DİKKAT: Sahte skor ataması kaldırıldı! 
+            # Sadece gerçekten benzerlik oranı 0.10'un üzerinde olanlar önerilecek.
+            if raw_score < 0.10:
+                continue
+                
+            final_score = round(raw_score, 2)
             
             recs.append({
                 "product_id": int(candidate['id']),
@@ -61,13 +64,16 @@ for category_name, group in tqdm(df.groupby('category'), desc="Kategori İşleme
             
             if len(recs) >= 3:
                 break
-                
-        redis_key = f"recommendations:product:{prod_id}"
-        pipe.set(redis_key, json.dumps(recs))
-        count += 1
         
-        if count % 1000 == 0:
-            pipe.execute()
+        # Eğer yeterli benzer ürün bulunamadıysa (boş kalmasın diye) Redis'e yazmıyoruz 
+        # böylece servis fallback yerine mantıklı filtreleme yapabiliyor.
+        if len(recs) > 0:
+            redis_key = f"recommendations:product:{prod_id}"
+            pipe.set(redis_key, json.dumps(recs))
+            count += 1
+            
+            if count % 1000 == 0:
+                pipe.execute()
 
 pipe.execute()
-print(f"🚀 MÜKEMMEL! {count:,} adet ürüne kategoriye özel mantıklı tavsiyeler Redis'e aktarıldı.")
+print(f"🚀 BAŞARILI! {count:,} adet ürüne gerçek ve kategoriye özel TF-IDF skorları Redis'e aktarıldı.")

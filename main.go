@@ -75,12 +75,11 @@ func main() {
 		logger.Error("Marketplace Consumer başlatılamadı", zap.Error(err))
 	}
 
-	// ... (Eski kodların)
 // 6.3 Saga Pattern - Ödeme Hatası Telafi Consumer (YENİ)
-paymentFailureConsumer := consumer.NewPaymentFailureConsumer(amqpConn)
-if err := paymentFailureConsumer.Start(ctx); err != nil {
-    logger.Error("Saga Payment Failure Consumer başlatılamadı", zap.Error(err))
-}
+	paymentFailureConsumer := consumer.NewPaymentFailureConsumer(amqpConn, db)
+	if err := paymentFailureConsumer.Start(ctx); err != nil {
+		logger.Error("Saga Payment Failure Consumer başlatılamadı", zap.Error(err))
+	}
 // ... (Eski kodların devamı)
 
 	app := fiber.New()
