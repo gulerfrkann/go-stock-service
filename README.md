@@ -34,16 +34,29 @@ Eşzamanlı gelen yoğun isteklerde **race condition**, **over-selling** ve mük
 - İşlem öncesinde Redis üzerinde sipariş anahtarı (`order:reserved:{id}`) TTL ile kontrol edilir.
 - Stok düşümü atomik Lua script ile işletilir; bellek kontrolü başarılı olursa PostgreSQL transaction'ı başlatılır.
 
-### 3. Dead Letter Queue (DLQ) ve Hata Toleransı
+### 3. Saga Pattern & Dağıtık Telafi (Rollback) Mekanizması
+Çoklu mikroservis ortamlarında veri tutarlılığını ve hata yönetimini sağlamak amacıyla entegre edilmiştir:
+- **Başarılı Akış:** Ödeme ve stok rezervasyon adımları başarılı olduğunda işlem normal seyrinde tamamlanır.
+- **Hata ve Rollback Senaryosu:** Ödeme adımında (`should_fail: true`) bir hata/red simüle edildiğinde, sistem otomatik olarak RabbitMQ `payment.failed` kuyruğuna olay fırlatır.
+- **Telafi Worker'ı (`PaymentFailureConsumer`):** Bu olayı anında yakalayarak veritabanında rezerve edilen stokları ilgili ürünün stoğuna güvenli bir şekilde geri iade eder (rollback).
+
+### 4. Dead Letter Queue (DLQ) ve Hata Toleransı
 - RabbitMQ tüketim hattında `autoAck: false` politikası uygulanır.
 - Formatı bozuk veya iş mantığı kurallarını ihlal eden mesajlar ana kuyruğu kilitlememesi için `Nack(false, false)` ile doğrudan `stock_events.dlx` üzerinden `critical_stock_dlq` kuyruğuna yönlendirilir.
 
-### 4. Asenkron Kritik Stok E-Posta Bildirimi
+### 5. Asenkron Kritik Stok E-Posta Bildirimi
 Ürün stoğu kritik eşiğin altına düştüğünde ($\le 3$), `stock.critical_alert` yönlendirme anahtarıyla fırlatılan olay tüketilir ve depo sorumlularına Mailtrap/SMTP üzerinden HTML acil tedarik e-postası iletilir.
 
-### 5. Semantik Arama ve Kategori Bazlı NLP Tavsiye Motoru
+### 6. Semantik Arama ve Kategori Bazlı NLP Tavsiye Motoru
 - **Kategori İçi İzolasyon:** Monitör arayan kullanıcıya monitör donanımları, kitap arayana kitap önerilmesi için ürünler kategori bazında izole TF-IDF ve kosinüs benzerliği matrisiyle eşleştirilir.
 - **İki Kademeli Fallback:** İstek geldiğinde sistem sırasıyla Redis NLP önbelleğine bakar; bulunamadığı durumlarda Qdrant vektör aramasını devreye sokarak alternatif ürün listesi üretir.
+
+---
+
+##  API Dokümantasyonu & Test
+Proje çalıştırıldıktan sonra uçtan uca etkileşimli testler ve şema incelemesi için Swagger UI arayüzü kullanılabilir:
+- **Swagger UI:** `http://localhost:8081/swagger/index.html`
+- **Ödeme & Saga Testi:** `POST /api/v1/payment/process` (İstek gövdesinde `should_fail: true/false` parametresi ile başarı ve rollback senaryoları simüle edilir.)
 
 ---
 
@@ -66,7 +79,7 @@ flowchart TD
         Queue -->|Consume| Consumer[Stock Consumer]
     end
 
-    subgraph Marketplace_Notification [Pazaryeri & Alarm Entegrasyonu]
+    subgraph Marketplace_Notification [Pazaryeri, Ödeme Saga & Alarm Entegrasyonu]
         Consumer -->|Geçerli Mesaj: Ack| SyncLogic[Sync Dağıtıcı]
         SyncLogic -->|Stok Eşitleme| Adapters[Trendyol & Hepsiburada Adaptörleri]
         SyncLogic -->|Kritik Eşik <= 3| Mail[SMTP / Mailtrap Bildirimi]
