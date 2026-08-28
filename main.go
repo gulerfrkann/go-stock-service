@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"log"
-	"os"
 
 	"stok-servisi/adapter/marketplace"
 	"stok-servisi/config"
@@ -99,39 +98,34 @@ func main() {
 
 	// --- KESİN ÇÖZÜM BAŞLANGICI ---
 	
-	// 9. Önce swagger.json dosyasını doğrudan diskten sunuyoruz (Çakışmayı %100 engeller)
-	app.Get("/swagger.json", func(c *fiber.Ctx) error {
-		return c.SendFile("./docs/swagger.json")
-	})
-
-	// 10. Swagger arayüzünü başlatıp doğrudan üstte sunduğumuz URL'ye bağlıyoruz
-	app.Get("/swagger/*", swagger.New(swagger.Config{
-		URL: "/swagger.json", // UI artık hiçbir yeri aramayacak, direkt bu dosyayı okuyacak
-	}))
-
-	// --- KESİN ÇÖZÜM BİTİŞİ ---
-
-	// 11. Static Dosya Sunumu (Artık swagger'ı ezemez)
-	app.Static("/", "./public")
-
-	// 12. Health Check Rotaları
-	routes.SetupHealthRoutes(app, healthHandler)
-
-	// 13. API Versiyon Grubu ve Ürün Rotaları
-	api := app.Group("/api/v1")
-	routes.SetupProductRoutes(api, productHandler)
-
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	// port := os.Getenv("PORT")
-	// if port == "" {
-	// 	port = "8080"
-	// }
-    // BUNLARI SİL VEYA YORUMA AL. YERİNE ŞUNU YAZ:
+// --- KESİN ÇÖZÜM BAŞLANGICI ---
     
-	logger.Info("Sunucu başlatılıyor", zap.String("port", "8081"))
-	log.Fatal(app.Listen(":8081"))
+    // 9. Önce swagger.json dosyasını doğrudan diskten sunuyoruz (Çakışmayı %100 engeller)
+    app.Get("/swagger.json", func(c *fiber.Ctx) error {
+        return c.SendFile("./docs/swagger.json")
+    })
+
+    // 10. Swagger arayüzünü başlatıp doğrudan üstte sunduğumuz URL'ye bağlıyoruz
+    app.Get("/swagger/*", swagger.New(swagger.Config{
+        URL: "/swagger.json", // UI artık hiçbir yeri aramayacak, direkt bu dosyayı okuyacak
+    }))
+
+    // --- KESİN ÇÖZÜM BİTİŞİ ---
+
+    // 11. Static Dosya Sunumu (Artık swagger'ı ezemez)
+    app.Static("/", "./public")
+
+    // 12. API Versiyon Grubu (Önce grubu tanımlıyoruz ki rotalarda kullanabilelim)
+    api := app.Group("/api/v1")
+
+    // 13. Rotaların Bağlanması
+    routes.SetupHealthRoutes(app, healthHandler)
+    routes.SetupProductRoutes(api, productHandler)
+    
+    // Ödeme Rotaları (Saga Testleri İçin - Artık 'api' değişkeni tanımlı olduğu için hata vermeyecek)
+    routes.SetupPaymentRoutes(api, amqpConn)
+
+    // 14. Sunucunun Başlatılması
+    logger.Info("Sunucu başlatılıyor", zap.String("port", "8081"))
+    log.Fatal(app.Listen(":8081"))
 }

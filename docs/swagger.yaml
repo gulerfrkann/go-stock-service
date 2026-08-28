@@ -4,6 +4,20 @@ definitions:
       quantity:
         type: integer
     type: object
+  models.PaymentRequest:
+    properties:
+      amount:
+        type: number
+      order_id:
+        type: string
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+      should_fail:
+        description: true yapılırsa Saga telafi mekanizması tetiklenir
+        type: boolean
+    type: object
   models.Product:
     properties:
       ai_cataloged:
@@ -270,4 +284,33 @@ paths:
       summary: Idempotent stok rezervasyonu yapar ve Outbox event tetikler
       tags:
       - Stock
+  /api/v1/payment/process:
+    post:
+      consumes:
+      - application/json
+      description: Gelen isteğe göre ödemeyi gerçekleştirir. Eğer should_fail true
+        ise ödemeyi reddeder ve Saga pattern ile stok telafisini (rollback) tetikler.
+      parameters:
+      - description: Ödeme Bilgileri
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/models.PaymentRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Simüle edilmiş ödeme işlemi ve Saga tetikleyicisi
+      tags:
+      - Ödeme
 swagger: "2.0"

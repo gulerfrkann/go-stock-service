@@ -323,6 +323,48 @@
                     }
                 }
             }
+        },
+        "/api/v1/payment/process": {
+            "post": {
+                "description": "Gelen isteğe göre ödemeyi gerçekleştirir. Eğer should_fail true ise ödemeyi reddeder ve Saga pattern ile stok telafisini (rollback) tetikler.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Ödeme"
+                ],
+                "summary": "Simüle edilmiş ödeme işlemi ve Saga tetikleyicisi",
+                "parameters": [
+                    {
+                        "description": "Ödeme Bilgileri",
+                        "name": "request",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/models.PaymentRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
@@ -331,6 +373,27 @@
             "properties": {
                 "quantity": {
                     "type": "integer"
+                }
+            }
+        },
+        "models.PaymentRequest": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                },
+                "order_id": {
+                    "type": "string"
+                },
+                "product_id": {
+                    "type": "integer"
+                },
+                "quantity": {
+                    "type": "integer"
+                },
+                "should_fail": {
+                    "description": "true yapılırsa Saga telafi mekanizması tetiklenir",
+                    "type": "boolean"
                 }
             }
         },
