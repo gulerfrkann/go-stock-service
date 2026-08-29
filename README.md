@@ -1,23 +1,24 @@
-# Distributed Stock Management & Vector Recommendation Engine
+#  Distributed Stock Management & Vector Recommendation Engine
 
 Yüksek eşzamanlılık (high concurrency), veri tutarlılığı ve asenkron olay yönetimi odaklı geliştirilmiş; Go, Redis, RabbitMQ, PostgreSQL ve Qdrant tabanlı dağıtık çok kanallı stok yönetimi ve vektör arama mikroservisidir.
 
 ---
 
-## Mimari Bileşenler ve Teknoloji Yığını
+##  Mimari Bileşenler ve Teknoloji Yığını
 
 | Katman | Teknoloji | Kullanım Amacı |
 |---|---|---|
 | **Backend Core** | Go (Golang) 1.22+ / Fiber v2 | Yüksek verimli HTTP API, idempotency kontrolü ve mikroservis çekirdeği |
 | **Veritabanı (RDBMS)** | PostgreSQL 15 / GORM | ~1M ürün kataloğu, GIN indeksli FTS ve Outbox olay kayıtları için ACID kalıcılık |
-| **Önbellek & Eşzamanlılık** | Redis 7 | Cache-Aside stratejisi, TTL tabanlı rezervasyon kilidi ve Lua atomik stok scriptleri |
+| **Önbellek & Eşzamanlılık** | Redis 7 (Port 6380) | Cache-Aside stratejisi, TTL tabanlı rezervasyon kilidi ve Lua atomik stok scriptleri |
 | **Mesaj Kuyruğu (Broker)** | RabbitMQ 3 (Topic Exchange) | Asenkron olay dağıtımı, pazaryeri senkronizasyonu ve worker iletişimi |
 | **Hata İzolasyonu** | DLX / Dead Letter Queue (DLQ) | Poison message yönetimi ve tüketici hata toleransı (resilience) |
 | **Vektörel Veritabanı** | Qdrant | Dense vector indeksleme (HNSW) ve semantik ürün tavsiye motoru |
 | **Pazaryeri Adaptörleri** | Go Interfaces (Trendyol & HB) | Asenkron çok kanallı stok eşitleme ve simülasyon katmanı |
 | **Doğal Dil İşleme (NLP)** | Python (Scikit-Learn / TF-IDF) | Kategori bazlı izole metin benzerliği ve semantik eşleme matrisi |
 | **Bildirim Servisi** | Go `net/smtp` / Mailtrap | Asenkron kritik stok e-posta bildirim hattı ($\le 3$ eşik alarmı) |
-| **Konteynerizasyon** | Docker & Docker Compose | 5 ana servis için izole orkestrasyon ve kalıcı disk volume yönetimi |
+| **Kontrol Paneli** | Tailwind CSS Dashboard | Merkezi stok, API dokümantasyonu, broker ve vector DB yönetim arayüzü |
+| **Konteynerizasyon** | Docker & Docker Compose | İzole orkestrasyon ve kalıcı disk volume yönetimi |
 
 ---
 
@@ -53,7 +54,7 @@ Eşzamanlı gelen yoğun isteklerde **race condition**, **over-selling** ve mük
 
 ---
 
-##  API Dokümantasyonu & Test
+## 📄 API Dokümantasyonu & Test
 Proje çalıştırıldıktan sonra uçtan uca etkileşimli testler ve şema incelemesi için Swagger UI arayüzü kullanılabilir:
 - **Swagger UI:** `http://localhost:8081/swagger/index.html`
 - **Ödeme & Saga Testi:** `POST /api/v1/payment/process` (İstek gövdesinde `should_fail: true/false` parametresi ile başarı ve rollback senaryoları simüle edilir.)
