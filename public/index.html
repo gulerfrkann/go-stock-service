@@ -22,14 +22,17 @@
                 </div>
                 <div>
                     <h1 class="text-base font-bold text-white leading-tight">Dağıtık Stok & AI Ekosistemi</h1>
-                    <p class="text-[11px] text-slate-400">Go • Redis • RabbitMQ • Qdrant • Outbox & Marketplaces</p>
+                    <p class="text-[11px] text-slate-400">Go • Redis • RabbitMQ • Qdrant • Outbox & Saga Platform</p>
                 </div>
             </div>
 
             <!-- Sekme Butonları -->
-            <nav class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800">
+            <nav class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 flex-wrap">
                 <button onclick="switchTab('stockTab')" id="btn-stockTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white transition-all">
                     <i class="fa-solid fa-boxes-stacked mr-1.5"></i> Stok Yönetimi
+                </button>
+                <button onclick="switchTab('paymentTab')" id="btn-paymentTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
+                    <i class="fa-solid fa-credit-card mr-1.5"></i> Ödeme & Saga
                 </button>
                 <button onclick="switchTab('swaggerTab')" id="btn-swaggerTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
                     <i class="fa-solid fa-code mr-1.5"></i> Swagger API
@@ -99,6 +102,57 @@
                     <button onclick="changePage(-1)" id="prevBtn" class="px-4 py-2 bg-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-300 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Önceki</button>
                     <button onclick="changePage(1)" id="nextBtn" class="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed">Sonraki</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- TAB: ÖDEME & SAGA TESTİ -->
+    <div id="paymentTab" class="tab-content flex-1 p-4 md:p-6">
+        <div class="max-w-xl mx-auto bg-white text-slate-800 rounded-xl shadow-lg border border-slate-200 p-6">
+            <div class="mb-6 border-b pb-4">
+                <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
+                    <span>💳</span> Dağıtık Ödeme & Saga Telafi Paneli
+                </h2>
+                <p class="text-xs text-slate-500 mt-1">Ödeme geçidi entegrasyonu ve hata durumunda otomatik stok rollback (Saga) testi</p>
+            </div>
+
+            <form id="uiPaymentForm" class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Sipariş ID (Order ID)</label>
+                    <input type="text" id="payOrderId" value="ORD-UI-8877" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono">
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Ürün ID (Product ID)</label>
+                        <input type="number" id="payProductId" value="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Adet (Quantity)</label>
+                        <input type="number" id="payQuantity" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Ödeme Tutarı (₺)</label>
+                    <input type="number" step="0.01" id="payAmount" value="350.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+                </div>
+
+                <div class="flex items-center space-x-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
+                    <input type="checkbox" id="payShouldFail" class="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500">
+                    <label for="payShouldFail" class="text-xs font-semibold text-rose-600 cursor-pointer">
+                        Ödemeyi Başarısız Simüle Et (Saga Rollback Tetikle)
+                    </label>
+                </div>
+
+                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-all shadow-sm">
+                    Ödemeyi İşle ve Siparişi Tamamla
+                </button>
+            </form>
+
+            <div id="payResultContainer" class="mt-6 hidden">
+                <h3 class="text-xs font-semibold text-slate-500 mb-2">Sunucu Yanıtı:</h3>
+                <pre id="payResponseBox" class="bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-slate-800"></pre>
             </div>
         </div>
     </div>
@@ -186,7 +240,7 @@
     </div>
 
     <script>
-        const API_BASE = "http://localhost:8080/api/v1";
+        const API_BASE = "http://localhost:8081/api/v1";
         let currentPage = 1;
         let totalPages = 1;
         let searchTimeout = null;
@@ -330,10 +384,9 @@
                 const description = p.description || p.Description || '';
                 const isAICataloged = p.ai_cataloged || p.AICataloged || p.aiCataloged;
                 const imgPath = p.image_url || p.ImageURL || '';
-                const imgUrl = imgPath ? `http://localhost:8080${imgPath}` : 'https://via.placeholder.com/50?text=Görsel';
+                const imgUrl = imgPath ? `http://localhost:8081${imgPath}` : 'https://via.placeholder.com/50?text=Görsel';
                 const details = parseProductDetails(prodName, dbCategory);
                 
-                // Kritik Stok Eşiği (<= 3 ise Alarm)
                 let stockUI = '';
                 if (prodStock <= 3) {
                     stockUI = `
@@ -358,7 +411,6 @@
                     stockUI += `<div class="mt-1"><span class="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700 border border-blue-200">🤖 AI Kataloglandı</span></div>`;
                 }
 
-                // Pazaryeri Senkronizasyon Rozetleri
                 const marketplaceBadges = `
                     <div class="flex flex-col gap-1">
                         <div class="flex items-center gap-1.5 text-xs text-slate-700">
@@ -463,6 +515,52 @@
                 btn.disabled = false;
             }
         }
+
+        // Ödeme & Saga Form Dinleyicisi (Düzeltilmiş Order ID Alımı)
+        document.getElementById('uiPaymentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const orderIdVal = document.getElementById('payOrderId').value;
+            const productIdVal = parseInt(document.getElementById('payProductId').value);
+            const quantityVal = parseInt(document.getElementById('payQuantity').value);
+            const amountVal = parseFloat(document.getElementById('payAmount').value);
+            const shouldFailVal = document.getElementById('payShouldFail').checked;
+
+            const payload = {
+                order_id: orderIdVal,
+                product_id: productIdVal,
+                quantity: quantityVal,
+                amount: amountVal,
+                should_fail: shouldFailVal
+            };
+
+            const resultContainer = document.getElementById('payResultContainer');
+            const responseBox = document.getElementById('payResponseBox');
+
+            resultContainer.classList.remove('hidden');
+            responseBox.textContent = "Ödeme işleniyor...";
+            responseBox.className = "bg-slate-900 text-slate-400 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-slate-800";
+
+            try {
+                const response = await fetch(`${API_BASE}/payment/process`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                responseBox.textContent = JSON.stringify(data, null, 2);
+
+                if (response.ok) {
+                    responseBox.className = "bg-emerald-950/40 text-emerald-300 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-emerald-800";
+                } else {
+                    responseBox.className = "bg-rose-950/40 text-rose-300 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-rose-800";
+                }
+            } catch (err) {
+                responseBox.textContent = "Bağlantı Hatası: " + err.message;
+                responseBox.className = "bg-rose-950/40 text-rose-300 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-rose-800";
+            }
+        });
 
         function changePage(delta) {
             if (currentPage + delta >= 1 && currentPage + delta <= totalPages) {

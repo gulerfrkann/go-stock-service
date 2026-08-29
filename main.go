@@ -50,6 +50,11 @@ func main() {
 	productService := service.NewProductService(productRepo, rdb)
 	productHandler := handlers.NewProductHandler(productService)
 	healthHandler := handlers.NewHealthHandler(db, rdb)
+    
+	// 5.1 Ödeme Servis ve Gateway Bağımlılıkları
+	paymentGateway := &service.DefaultPaymentGateway{}
+	paymentService := service.NewPaymentService(db, amqpConn, paymentGateway)
+	paymentHandler := handlers.NewPaymentHandler(paymentService)
 
 	// 6. AI Catalog Worker
 	aiWorker := worker.NewAIWorker(amqpConn, productRepo)
@@ -123,7 +128,8 @@ func main() {
     routes.SetupProductRoutes(api, productHandler)
     
     // Ödeme Rotaları (Saga Testleri İçin - Artık 'api' değişkeni tanımlı olduğu için hata vermeyecek)
-    routes.SetupPaymentRoutes(api, amqpConn)
+    // Ödeme Rotaları (Güncellenmiş Katmanlı Mimari)
+	routes.SetupPaymentRoutes(api, paymentHandler)
 
     // 14. Sunucunun Başlatılması
     logger.Info("Sunucu başlatılıyor", zap.String("port", "8081"))
