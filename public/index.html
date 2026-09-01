@@ -29,10 +29,7 @@
             <!-- Sekme Butonları -->
             <nav class="flex items-center space-x-1 bg-slate-900 p-1 rounded-xl border border-slate-800 flex-wrap">
                 <button onclick="switchTab('stockTab')" id="btn-stockTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white transition-all">
-                    <i class="fa-solid fa-boxes-stacked mr-1.5"></i> Stok Yönetimi
-                </button>
-                <button onclick="switchTab('paymentTab')" id="btn-paymentTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
-                    <i class="fa-solid fa-credit-card mr-1.5"></i> Ödeme & Saga
+                    <i class="fa-solid fa-boxes-stacked mr-1.5"></i> Stok Yönetimi & Pazar Yeri
                 </button>
                 <button onclick="switchTab('swaggerTab')" id="btn-swaggerTab" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition-all">
                     <i class="fa-solid fa-code mr-1.5"></i> Swagger API
@@ -67,7 +64,7 @@
                 <div class="flex flex-col sm:flex-row items-center gap-3 w-full lg:w-auto">
                     <div class="relative w-full sm:w-72">
                         <input type="text" id="searchInput" oninput="debounceSearch()" placeholder="Ürün, marka veya kategori ara..." 
-                               class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
+                                class="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all">
                         <svg class="w-5 h-5 text-slate-400 absolute left-3 top-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path></svg>
                     </div>
                     <button onclick="toggleModal(true)" class="w-full sm:w-auto px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-lg shadow-sm transition-all flex items-center justify-center gap-2 whitespace-nowrap">
@@ -106,57 +103,6 @@
         </div>
     </div>
 
-    <!-- TAB: ÖDEME & SAGA TESTİ -->
-    <div id="paymentTab" class="tab-content flex-1 p-4 md:p-6">
-        <div class="max-w-xl mx-auto bg-white text-slate-800 rounded-xl shadow-lg border border-slate-200 p-6">
-            <div class="mb-6 border-b pb-4">
-                <h2 class="text-xl font-bold text-slate-800 flex items-center gap-2">
-                    <span>💳</span> Dağıtık Ödeme & Saga Telafi Paneli
-                </h2>
-                <p class="text-xs text-slate-500 mt-1">Ödeme geçidi entegrasyonu ve hata durumunda otomatik stok rollback (Saga) testi</p>
-            </div>
-
-            <form id="uiPaymentForm" class="space-y-4">
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Sipariş ID (Order ID)</label>
-                    <input type="text" id="payOrderId" value="ORD-UI-8877" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none font-mono">
-                </div>
-
-                <div class="grid grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Ürün ID (Product ID)</label>
-                        <input type="number" id="payProductId" value="1" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                    <div>
-                        <label class="block text-xs font-semibold text-slate-600 mb-1">Adet (Quantity)</label>
-                        <input type="number" id="payQuantity" value="2" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                    </div>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-semibold text-slate-600 mb-1">Ödeme Tutarı (₺)</label>
-                    <input type="number" step="0.01" id="payAmount" value="350.00" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none">
-                </div>
-
-                <div class="flex items-center space-x-3 bg-slate-50 p-3 rounded-lg border border-slate-200">
-                    <input type="checkbox" id="payShouldFail" class="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500">
-                    <label for="payShouldFail" class="text-xs font-semibold text-rose-600 cursor-pointer">
-                        Ödemeyi Başarısız Simüle Et (Saga Rollback Tetikle)
-                    </label>
-                </div>
-
-                <button type="submit" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2.5 rounded-lg text-sm transition-all shadow-sm">
-                    Ödemeyi İşle ve Siparişi Tamamla
-                </button>
-            </form>
-
-            <div id="payResultContainer" class="mt-6 hidden">
-                <h3 class="text-xs font-semibold text-slate-500 mb-2">Sunucu Yanıtı:</h3>
-                <pre id="payResponseBox" class="bg-slate-900 text-slate-100 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-slate-800"></pre>
-            </div>
-        </div>
-    </div>
-
     <!-- TAB 2: SWAGGER GÖMÜLÜ IFRAME -->
     <div id="swaggerTab" class="tab-content flex-1 p-4">
         <div class="max-w-7xl mx-auto h-[85vh] bg-white rounded-xl overflow-hidden shadow-lg border border-slate-700">
@@ -183,6 +129,89 @@
                 <a href="http://localhost:6333/dashboard" target="_blank" class="text-red-400 hover:underline">Tam Ekranda Aç <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i></a>
             </div>
             <iframe src="http://localhost:6333/dashboard" class="w-full flex-1 border-0 bg-slate-900"></iframe>
+        </div>
+    </div>
+
+    <!-- MODAL: KREDİ KARTI İLE GÜVENLİ ÖDEME (TRENDYOL / HB STİLİ) -->
+    <div id="checkoutModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm hidden items-center justify-center p-4 z-50">
+        <div class="bg-white text-slate-800 rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6 relative">
+            <button onclick="toggleCheckoutModal(false)" class="absolute top-4 right-4 text-slate-400 hover:text-slate-600 font-bold text-xl">&times;</button>
+            
+            <div class="flex items-center space-x-3 mb-5 border-b pb-4">
+                <div class="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 text-lg">
+                    <i class="fa-solid fa-lock"></i>
+                </div>
+                <div>
+                    <h2 class="text-base font-bold text-slate-900 leading-tight">Güvenli Ödeme & Tamamlama</h2>
+                    <p class="text-xs text-slate-500">256-Bit SSL Uçtan Uca Şifreli Ödeme Adımı</p>
+                </div>
+            </div>
+
+            <form id="checkoutForm" onsubmit="handleCheckoutSubmit(event)" class="space-y-4">
+                <!-- Ürün Özet Kartı -->
+                <div class="bg-slate-50 border border-slate-200 rounded-xl p-3 flex justify-between items-center text-xs">
+                    <div>
+                        <span class="text-slate-400 block">Seçilen Ürün:</span>
+                        <b id="checkoutProdName" class="text-slate-800 text-sm font-semibold truncate max-w-[200px] block">Ürün Adı</b>
+                    </div>
+                    <div class="text-right">
+                        <span class="text-slate-400 block">Birim Fiyat:</span>
+                        <b id="checkoutProdPrice" class="text-emerald-700 font-bold text-sm">₺0.00</b>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-3 gap-3">
+                    <div class="col-span-2">
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Kart Üzerindeki İsim</label>
+                        <input type="text" id="ccHolder" required value="Furkan Güler" placeholder="Ad Soyad" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none uppercase font-mono">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Adet</label>
+                        <input type="number" id="ccQuantity" min="1" value="1" oninput="updateCheckoutTotal()" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-bold text-center">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">Kart Numarası</label>
+                    <div class="relative">
+                        <input type="text" id="ccNumber" required maxlength="19" value="5526 **** **** 4892" placeholder="XXXX XXXX XXXX XXXX" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-mono">
+                        <div class="absolute right-3 top-2.5 flex space-x-1 text-slate-400 text-sm">
+                            <i class="fa-brands fa-cc-mastercard text-amber-500"></i>
+                            <i class="fa-brands fa-cc-visa text-blue-600"></i>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Son Kullanma (AA/YY)</label>
+                        <input type="text" id="ccExpiry" required maxlength="5" value="12/28" placeholder="12/28" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-center">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-semibold text-slate-600 mb-1">Güvenlik Kodu (CVV)</label>
+                        <input type="password" id="ccCVV" required maxlength="3" value="382" placeholder="CVV" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-center">
+                    </div>
+                </div>
+
+                <!-- Simülasyon Kontrolü -->
+                <div class="bg-rose-50 border border-rose-200 p-2.5 rounded-lg flex items-center space-x-2">
+                    <input type="checkbox" id="ccShouldFail" class="w-4 h-4 text-rose-600 rounded border-slate-300 focus:ring-rose-500">
+                    <label for="ccShouldFail" class="text-[11px] font-semibold text-rose-700 cursor-pointer leading-tight">
+                        Ödemeyi Başarısız Simüle Et (Saga Rollback / Stok İadesi Tetikle)
+                    </label>
+                </div>
+
+                <!-- Toplam & Buton -->
+                <div class="pt-2 border-t flex justify-between items-center">
+                    <div>
+                        <span class="text-[11px] text-slate-500 block">Ödenecek Tutar:</span>
+                        <b id="checkoutTotalAmount" class="text-base text-slate-900 font-extrabold">₺0.00</b>
+                    </div>
+                    <button type="submit" id="checkoutBtn" class="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition-all flex items-center gap-1.5">
+                        <i class="fa-solid fa-shield-halved"></i> Güvenli Öde
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -244,6 +273,7 @@
         let currentPage = 1;
         let totalPages = 1;
         let searchTimeout = null;
+        let activeProductForCheckout = null;
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -271,6 +301,73 @@
             const modal = document.getElementById('recommendationModal');
             if (show) modal.classList.remove('hidden'), modal.classList.add('flex');
             else modal.classList.add('hidden'), modal.classList.remove('flex');
+        }
+
+        function toggleCheckoutModal(show) {
+            const modal = document.getElementById('checkoutModal');
+            if (show) modal.classList.remove('hidden'), modal.classList.add('flex');
+            else modal.classList.add('hidden'), modal.classList.remove('flex');
+        }
+
+        function openCheckout(product) {
+            activeProductForCheckout = product;
+            document.getElementById('checkoutProdName').innerText = product.name;
+            document.getElementById('checkoutProdPrice').innerText = `₺${product.price.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`;
+            document.getElementById('ccQuantity').value = 1;
+            document.getElementById('ccShouldFail').checked = false;
+            updateCheckoutTotal();
+            toggleCheckoutModal(true);
+        }
+
+        function updateCheckoutTotal() {
+            if (!activeProductForCheckout) return;
+            const qty = parseInt(document.getElementById('ccQuantity').value) || 1;
+            const total = activeProductForCheckout.price * qty;
+            document.getElementById('checkoutTotalAmount').innerText = `₺${total.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}`;
+        }
+
+        async function handleCheckoutSubmit(e) {
+            e.preventDefault();
+            if (!activeProductForCheckout) return;
+
+            const btn = document.getElementById('checkoutBtn');
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Bankaya Bağlanılıyor...`;
+
+            const quantity = parseInt(document.getElementById('ccQuantity').value) || 1;
+            const shouldFail = document.getElementById('ccShouldFail').checked;
+            const orderId = "ORD-CC-" + Math.floor(100000 + Math.random() * 900000);
+
+            const payload = {
+                order_id: orderId,
+                product_id: activeProductForCheckout.id,
+                quantity: quantity,
+                should_fail: shouldFail
+            };
+
+            try {
+                const response = await fetch(`${API_BASE}/payment/process`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                toggleCheckoutModal(false);
+
+                if (response.ok) {
+                    alert(`✅ ÖDEME ONAYLANDI (3D Secure Geçildi)!\n\nSipariş ID: ${orderId}\nKart: ${document.getElementById('ccNumber').value}\nÇekilen Tutar: ₺${data.paid_amount}\n\nStoklar anında düşüldü ve pazaryerleri eşitlendi.`);
+                    fetchProducts();
+                } else {
+                    alert(`❌ ÖDEME REDDEDİLDİ (Banka Onay Vermedi)!\n\nSebep: ${data.error || 'Yetersiz bakiye / Geçersiz işlem'}\n\nSaga Rollback mekanizması tetiklendi ve rezerve stoklar iade edildi.`);
+                    fetchProducts();
+                }
+            } catch (err) {
+                alert(`❌ Banka Bağlantı Hatası: ${err.message}`);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-shield-halved"></i> Güvenli Öde`;
+            }
         }
 
         async function reserveStockUI(productId, productName) {
@@ -428,6 +525,8 @@
                     </div>
                 `;
 
+                const productJson = JSON.stringify({ id: prodID, name: details.cleanName, price: prodPrice }).replace(/"/g, '&quot;');
+
                 tbody.innerHTML += `
                     <tr class="hover:bg-slate-50 transition-colors ${prodStock <= 3 ? 'bg-red-50/40' : ''}">
                         <td class="p-3.5 font-mono text-xs text-slate-400">#${prodID}</td>
@@ -443,9 +542,12 @@
                         <td class="p-3.5">${stockUI}</td>
                         <td class="p-3.5">${marketplaceBadges}</td>
                         <td class="p-3.5 text-center">
-                            <div class="flex items-center justify-center gap-1.5">
+                            <div class="flex items-center justify-center gap-1.5 flex-wrap">
                                 <button onclick="reserveStockUI(${prodID}, '${details.cleanName.replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center gap-1 whitespace-nowrap" title="Idempotent Stok Rezervasyonu">
                                     <span>🛒</span> Rezerve Et
+                                </button>
+                                <button onclick="openCheckout(${productJson})" class="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center gap-1 whitespace-nowrap" title="Kredi Kartı ile Güvenli Satın Al">
+                                    <span>💳</span> Satın Al
                                 </button>
                                 <button onclick="openRecommendations(${prodID}, '${details.cleanName.replace(/'/g, "\\'")}')" class="px-2.5 py-1.5 bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 rounded-lg text-xs font-semibold transition-all shadow-sm flex items-center gap-1 whitespace-nowrap">
                                     <span>💡</span> Tavsiye
@@ -515,52 +617,6 @@
                 btn.disabled = false;
             }
         }
-
-        // Ödeme & Saga Form Dinleyicisi (Düzeltilmiş Order ID Alımı)
-        document.getElementById('uiPaymentForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-
-            const orderIdVal = document.getElementById('payOrderId').value;
-            const productIdVal = parseInt(document.getElementById('payProductId').value);
-            const quantityVal = parseInt(document.getElementById('payQuantity').value);
-            const amountVal = parseFloat(document.getElementById('payAmount').value);
-            const shouldFailVal = document.getElementById('payShouldFail').checked;
-
-            const payload = {
-                order_id: orderIdVal,
-                product_id: productIdVal,
-                quantity: quantityVal,
-                amount: amountVal,
-                should_fail: shouldFailVal
-            };
-
-            const resultContainer = document.getElementById('payResultContainer');
-            const responseBox = document.getElementById('payResponseBox');
-
-            resultContainer.classList.remove('hidden');
-            responseBox.textContent = "Ödeme işleniyor...";
-            responseBox.className = "bg-slate-900 text-slate-400 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-slate-800";
-
-            try {
-                const response = await fetch(`${API_BASE}/payment/process`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(payload)
-                });
-
-                const data = await response.json();
-                responseBox.textContent = JSON.stringify(data, null, 2);
-
-                if (response.ok) {
-                    responseBox.className = "bg-emerald-950/40 text-emerald-300 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-emerald-800";
-                } else {
-                    responseBox.className = "bg-rose-950/40 text-rose-300 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-rose-800";
-                }
-            } catch (err) {
-                responseBox.textContent = "Bağlantı Hatası: " + err.message;
-                responseBox.className = "bg-rose-950/40 text-rose-300 p-3 rounded-lg text-xs font-mono overflow-x-auto border border-rose-800";
-            }
-        });
 
         function changePage(delta) {
             if (currentPage + delta >= 1 && currentPage + delta <= totalPages) {
