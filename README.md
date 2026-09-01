@@ -2,7 +2,15 @@
 
 Yüksek eşzamanlılık (high concurrency), veri tutarlılığı ve asenkron olay yönetimi odaklı geliştirilmiş; Go, Redis, RabbitMQ, PostgreSQL ve Qdrant tabanlı dağıtık çok kanallı stok yönetimi ve vektör arama mikroservisidir.
 
----
+
+##  Hızlı Başlangıç ve Kurulum
+
+Projede yer alan tüm servisleri (PostgreSQL, Redis, RabbitMQ, Qdrant ve Go Backend) Docker ile tek komutla ayağa kaldırabilirsiniz:
+
+1. Depoyu klonlayın:
+   ```bash
+   git clone [https://github.com/gulerfrkann/go-stock-service.git](https://github.com/gulerfrkann/go-stock-service.git)
+   cd go-stock-service
 
 ##  Mimari Bileşenler ve Teknoloji Yığını
 
